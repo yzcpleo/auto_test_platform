@@ -1,0 +1,278 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.autotest.platform.mapper.TestReportMapper">
+
+    <resultMap type="TestReport" id="TestReportResult">
+        <result property="reportId"          column="report_id"          />
+        <result property="reportCode"        column="report_code"        />
+        <result property="reportName"        column="report_name"        />
+        <result property="reportType"        column="report_type"        />
+        <result property="executionId"       column="execution_id"       />
+        <result property="projectId"         column="project_id"         />
+        <result property="status"            column="status"            />
+        <result property="format"            column="format"            />
+        <result property="template"          column="template"          />
+        <result property="summary"           column="summary"           />
+        <result property="reportData"        column="report_data"        />
+        <result property="filePath"          column="file_path"          />
+        <result property="reportUrl"         column="report_url"         />
+        <result property="generateStartTime"  column="generate_start_time"  />
+        <result property="generateEndTime"    column="generate_end_time"    />
+        <result property="generateDuration"  column="generate_duration"  />
+        <result property="generatorId"       column="generator_id"       />
+        <result property="createBy"          column="create_by"          />
+        <result property="createTime"        column="create_time"        />
+        <result property="updateBy"          column="update_by"          />
+        <result property="updateTime"        column="update_time"        />
+        <result property="remark"            column="remark"            />
+        <result property="generatorName"     column="generator_name"     />
+        <result property="projectName"       column="project_name"       />
+        <result property="executionCode"     column="execution_code"     />
+        <result property="executionName"     column="execution_name"     />
+    </resultMap>
+
+    <sql id="selectTestReportVo">
+        select r.report_id, r.report_code, r.report_name, r.report_type, r.execution_id, r.project_id,
+               r.status, r.format, r.template, r.summary, r.report_data, r.file_path, r.report_url,
+               r.generate_start_time, r.generate_end_time, r.generate_duration, r.generator_id,
+               r.create_by, r.create_time, r.update_by, r.update_time, r.remark,
+               u.nick_name as generator_name, p.project_name, e.execution_code, e.execution_name
+        from test_report r
+        left join sys_user u on r.generator_id = u.user_id
+        left join test_project p on r.project_id = p.project_id
+        left join test_execution e on r.execution_id = e.execution_id
+    </sql>
+
+    <select id="selectTestReportList" parameterType="TestReport" resultMap="TestReportResult">
+        <include refid="selectTestReportVo"/>
+        <where>
+            <if test="projectId != null">
+                AND r.project_id = #{projectId}
+            </if>
+            <if test="reportName != null and reportName != ''">
+                AND r.report_name like concat('%', #{reportName}, '%')
+            </if>
+            <if test="reportType != null and reportType != ''">
+                AND r.report_type = #{reportType}
+            </if>
+            <if test="status != null and status != ''">
+                AND r.status = #{status}
+            </if>
+            <if test="generatorId != null">
+                AND r.generator_id = #{generatorId}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                AND date_format(r.create_time,'%y%m%d') &gt;= date_format(#{params.beginTime},'%y%m%d')
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                AND date_format(r.create_time,'%y%m%d') &lt;= date_format(#{params.endTime},'%y%m%d')
+            </if>
+        </where>
+        order by r.create_time desc
+    </select>
+
+    <select id="selectTestReportByReportId" parameterType="Long" resultMap="TestReportResult">
+        <include refid="selectTestReportVo"/>
+        where r.report_id = #{reportId}
+    </select>
+
+    <select id="selectByProjectId" parameterType="Long" resultMap="TestReportResult">
+        <include refid="selectTestReportVo"/>
+        where r.project_id = #{projectId}
+        order by r.create_time desc
+    </select>
+
+    <select id="selectByExecutionId" parameterType="Long" resultMap="TestReportResult">
+        <include refid="selectTestReportVo"/>
+        where r.execution_id = #{executionId}
+        order by r.create_time desc
+    </select>
+
+    <select id="selectByReportType" resultMap="TestReportResult">
+        <include refid="selectTestReportVo"/>
+        where r.report_type = #{reportType}
+        <if test="projectId != null">
+            AND r.project_id = #{projectId}
+        </if>
+        order by r.create_time desc
+    </select>
+
+    <select id="statisticsByProject" resultType="map">
+        select
+            count(*) as total_reports,
+            sum(case when r.status = 'COMPLETED' then 1 else 0 end) as completed_reports,
+            sum(case when r.status = 'FAILED' then 1 else 0 end) as failed_reports,
+            sum(case when r.report_type = 'EXECUTION' then 1 else 0 end) as execution_reports,
+            sum(case when r.report_type = 'TREND' then 1 else 0 end) as trend_reports,
+            sum(case when r.report_type = 'SUMMARY' then 1 else 0 end) as summary_reports,
+            avg(r.generate_duration) as avg_generate_duration
+        from test_report r
+        where r.project_id = #{projectId}
+        <if test="timeRange != null and timeRange != ''">
+            and r.create_time >= #{timeRange}
+        </if>
+    </select>
+
+    <select id="selectTopFailedCases" resultType="map">
+        select
+            tc.case_id,
+            tc.case_title,
+            tc.case_type,
+            count(*) as failure_count,
+            max(te.create_time) as last_failure_time,
+            min(te.status) as common_status,
+            (count(*) * 1.0 / (select count(*) from test_execution te2 where te2.project_id = #{projectId})) as failure_rate
+        from test_execution te
+        left join test_execution_case tec on te.execution_id = tec.execution_id
+        left join test_case tc on tec.case_id = tc.case_id
+        where te.project_id = #{projectId}
+        and tec.status = 'FAILED'
+        <if test="timeRange != null and timeRange != ''">
+            and te.create_time >= #{timeRange}
+        </if>
+        group by tc.case_id, tc.case_title, tc.case_type
+        order by failure_count desc
+        limit #{limit}
+    </select>
+
+    <select id="selectPerformanceMetrics" resultType="map">
+        select
+            avg(te.generate_duration) as avg_execution_time,
+            max(te.generate_duration) as max_execution_time,
+            min(te.generate_duration) as min_execution_time,
+            sum(te.total_cases) as total_cases,
+            sum(te.success_cases) as success_cases,
+            sum(te.failed_cases) as failed_cases,
+            avg(te.progress) as avg_progress
+        from test_execution te
+        where te.project_id = #{projectId}
+        and te.status in ('SUCCESS', 'FAILED')
+        <if test="timeRange != null and timeRange != ''">
+            and te.create_time >= #{timeRange}
+        </if>
+    </select>
+
+    <select id="selectTrendData" resultType="map">
+        select
+            date_format(r.create_time, '%Y-%m-%d') as report_date,
+            count(*) as report_count,
+            sum(case when r.status = 'COMPLETED' then 1 else 0 end) as completed_count,
+            avg(r.generate_duration) as avg_duration
+        from test_report r
+        where r.project_id = #{projectId}
+        and r.create_time >= date_sub(curdate(), interval #{days} day)
+        group by date_format(r.create_time, '%Y-%m-%d')
+        order by report_date asc
+    </select>
+
+    <select id="selectExpiredReports" resultType="Long">
+        select r.report_id
+        from test_report r
+        where r.project_id = #{projectId}
+        and r.create_time &lt; date_sub(now(), interval #{days} day)
+    </select>
+
+    <insert id="insertTestReport" parameterType="TestReport" useGeneratedKeys="true" keyProperty="reportId">
+        insert into test_report
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="reportCode != null and reportCode != ''">report_code,</if>
+            <if test="reportName != null and reportName != ''">report_name,</if>
+            <if test="reportType != null and reportType != ''">report_type,</if>
+            <if test="executionId != null">execution_id,</if>
+            <if test="projectId != null">project_id,</if>
+            <if test="status != null and status != ''">status,</if>
+            <if test="format != null and format != ''">format,</if>
+            <if test="template != null">template,</if>
+            <if test="summary != null">summary,</if>
+            <if test="reportData != null">report_data,</if>
+            <if test="filePath != null">file_path,</if>
+            <if test="reportUrl != null">report_url,</if>
+            <if test="generateStartTime != null">generate_start_time,</if>
+            <if test="generateEndTime != null">generate_end_time,</if>
+            <if test="generateDuration != null">generate_duration,</if>
+            <if test="generatorId != null">generator_id,</if>
+            <if test="createBy != null">create_by,</if>
+            <if test="createTime != null">create_time,</if>
+            <if test="updateBy != null">update_by,</if>
+            <if test="updateTime != null">update_time,</if>
+            <if test="remark != null">remark,</if>
+         </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="reportCode != null and reportCode != ''">#{reportCode},</if>
+            <if test="reportName != null and reportName != ''">#{reportName},</if>
+            <if test="reportType != null and reportType != ''">#{reportType},</if>
+            <if test="executionId != null">#{executionId},</if>
+            <if test="projectId != null">#{projectId},</if>
+            <if test="status != null and status != ''">#{status},</if>
+            <if test="format != null and format != ''">#{format},</if>
+            <if test="template != null">#{template},</if>
+            <if test="summary != null">#{summary},</if>
+            <if test="reportData != null">#{reportData},</if>
+            <if test="filePath != null">#{filePath},</if>
+            <if test="reportUrl != null">#{reportUrl},</if>
+            <if test="generateStartTime != null">#{generateStartTime},</if>
+            <if test="generateEndTime != null">#{generateEndTime},</if>
+            <if test="generateDuration != null">#{generateDuration},</if>
+            <if test="generatorId != null">#{generatorId},</if>
+            <if test="createBy != null">#{createBy},</if>
+            <if test="createTime != null">#{createTime},</if>
+            <if test="updateBy != null">#{updateBy},</if>
+            <if test="updateTime != null">#{updateTime},</if>
+            <if test="remark != null">#{remark},</if>
+         </trim>
+    </insert>
+
+    <update id="updateTestReport" parameterType="TestReport">
+        update test_report
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="reportCode != null and reportCode != ''">report_code = #{reportCode},</if>
+            <if test="reportName != null and reportName != ''">report_name = #{reportName},</if>
+            <if test="reportType != null and reportType != ''">report_type = #{reportType},</if>
+            <if test="executionId != null">execution_id = #{executionId},</if>
+            <if test="projectId != null">project_id = #{projectId},</if>
+            <if test="status != null and status != ''">status = #{status},</if>
+            <if test="format != null and format != ''">format = #{format},</if>
+            <if test="template != null">template = #{template},</if>
+            <if test="summary != null">summary = #{summary},</if>
+            <if test="reportData != null">report_data = #{reportData},</if>
+            <if test="filePath != null">file_path = #{filePath},</if>
+            <if test="reportUrl != null">report_url = #{reportUrl},</if>
+            <if test="generateStartTime != null">generate_start_time = #{generateStartTime},</if>
+            <if test="generateEndTime != null">generate_end_time = #{generateEndTime},</if>
+            <if test="generateDuration != null">generate_duration = #{generateDuration},</if>
+            <if test="generatorId != null">generator_id = #{generatorId},</if>
+            <if test="createBy != null">create_by = #{createBy},</if>
+            <if test="createTime != null">create_time = #{createTime},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+            <if test="remark != null">remark = #{remark},</if>
+        </trim>
+        where report_id = #{reportId}
+    </update>
+
+    <update id="updateStatus">
+        update test_report
+        set status = #{status}, update_time = now()
+        where report_id = #{reportId}
+    </update>
+
+    <update id="updateFilePath">
+        update test_report
+        set file_path = #{filePath}, update_time = now()
+        where report_id = #{reportId}
+    </update>
+
+    <delete id="deleteTestReportByReportId" parameterType="Long">
+        delete from test_report where report_id = #{reportId}
+    </delete>
+
+    <delete id="deleteTestReportByReportIds" parameterType="String">
+        delete from test_report where report_id in
+        <foreach item="reportId" collection="array" open="(" separator="," close=")">
+            #{reportId}
+        </foreach>
+    </delete>
+
+</mapper>
