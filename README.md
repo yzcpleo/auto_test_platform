@@ -74,19 +74,46 @@ mvn spring-boot:run
   - API接口数据源
   - 数据预览功能
 
-### 🚧 Phase 3: 高级功能开发 (开发中)
-- [ ] 测试执行引擎
-  - 任务调度系统
-  - 并行执行控制
-  - 框架适配器架构
-- [ ] 报告分析系统
-  - 实时执行监控
-  - 统计分析图表
-  - 趋势分析
-- [ ] CI/CD集成
-  - Git Webhook
-  - Jenkins集成
-  - 自动化部署
+### ✅ Phase 3: 测试执行引擎 (核心架构完成)
+- [x] 测试执行引擎基础架构
+  - 测试执行实体类 (TestExecution, TestExecutionCase, TestSchedule)
+  - MyBatis Mapper接口和XML映射
+  - 数据库表结构设计
+- [x] 任务调度系统
+  - ITestExecutionService - 测试执行管理接口
+  - ITestScheduleService - 调度任务管理接口
+  - 支持手动/自动/批量执行模式
+  - 执行统计和历史趋势分析
+- [x] 框架适配器架构
+  - TestFrameworkAdapter - 统一适配器接口
+  - SeleniumWebAdapter - Selenium Web UI适配器
+  - FrameworkAdapterManager - 框架管理器
+  - 插件化架构，支持多测试框架扩展
+- [x] 并行执行控制
+  - ParallelExecutionController - 高性能并行控制器
+  - 线程池任务调度和资源管理
+  - 动态并发数量控制
+  - 实时任务状态监控和停止机制
+
+### 🚧 Phase 4: 报告分析系统 (待开发)
+- [ ] 实时执行监控
+  - WebSocket实时通信
+  - 执行进度跟踪
+  - 日志流式输出
+- [ ] 统计分析图表
+  - 执行成功率统计
+  - 用例执行趋势分析
+  - 性能指标监控
+- [ ] 报告生成和导出
+  - HTML/PDF报告生成
+  - 自定义报告模板
+  - 邮件通知集成
+
+### 🚧 Phase 5: CI/CD集成 (待开发)
+- [ ] Git Webhook集成
+- [ ] Jenkins插件开发
+- [ ] 自动化部署流水线
+- [ ] 容器化部署方案
 
 ## 📊 API接口文档
 
@@ -269,17 +296,43 @@ docker run -d -p 8080:8080 autotest-platform:latest
 
 ## 🎉 更新日志
 
+### v1.2.0 (2024-01-01)
+- ✨ 完成Phase 3: 测试执行引擎核心架构
+- 🔧 新增测试执行引擎基础架构
+  - TestExecution, TestExecutionCase, TestSchedule实体类
+  - 完整的MyBatis Mapper接口和XML映射
+  - 数据库表结构设计和SQL脚本
+- ⚙️ 新增任务调度系统
+  - ITestExecutionService 测试执行管理接口
+  - ITestScheduleService 调度任务管理接口
+  - 支持手动/自动/批量执行模式
+  - 执行统计和历史趋势分析功能
+- 🔌 新增框架适配器架构
+  - TestFrameworkAdapter 统一适配器接口
+  - SeleniumWebAdapter Selenium Web UI适配器实现
+  - FrameworkAdapterManager 框架适配器管理器
+  - 插件化架构，支持多测试框架扩展
+- 🚀 新增并行执行控制
+  - ParallelExecutionController 高性能并行控制器
+  - 基于线程池的任务调度和资源管理
+  - 动态并发数量控制
+  - 实时任务状态监控和停止机制
+- 📚 完善项目文档和代码注释
+- 🐛 修复若干已知问题
+- 🔄 Git阶段性提交，代码结构优化
+
 ### v1.1.0 (2024-01-01)
 - ✨ 完成Phase 1: 基础框架搭建
 - ✨ 完成Phase 2: 核心功能开发
-- 新增测试用例分类管理
-- 新增测试用例CRUD功能
-- 新增测试用例版本控制
-- 新增测试数据源管理
+- 新增测试用例分类管理 (树形结构，权限控制)
+- 新增测试用例CRUD功能 (多测试类型支持)
+- 新增测试用例版本控制 (历史记录/版本比较/回滚)
+- 新增测试数据源管理 (文件/数据库/API数据源)
 - 完善API接口和权限控制
+- 集成Docker环境 (MySQL, Redis, MinIO)
 
 ### v1.0.0 (2024-01-01)
 - 🎉 项目初始化
-- 基础框架搭建
-- 项目管理功能
-- 多租户权限控制
+- 基础框架搭建 (若依框架集成)
+- 项目管理功能 (多租户数据隔离)
+- 权限控制体系
