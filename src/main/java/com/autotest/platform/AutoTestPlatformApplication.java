@@ -1,8 +1,8 @@
 package com.autotest.platform;
 
+import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
@@ -11,9 +11,10 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  *
  * @author autotest
  */
-@SpringBootApplication(exclude = { DataSourceAutoConfiguration.class })
+@SpringBootApplication
 @EnableAsync
 @EnableScheduling
+@MapperScan("com.autotest.platform.mapper")
 public class AutoTestPlatformApplication {
     public static void main(String[] args) {
         SpringApplication.run(AutoTestPlatformApplication.class, args);
