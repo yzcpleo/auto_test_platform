@@ -1,0 +1,295 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.autotest.platform.mapper.PipelineMapper">
+
+    <resultMap type="Pipeline" id="PipelineResult">
+        <result property="pipelineId"    column="pipeline_id"    />
+        <result property="pipelineName"  column="pipeline_name"  />
+        <result property="pipelineType"  column="pipeline_type"  />
+        <result property="triggerType"   column="trigger_type"   />
+        <result property="pipelineConfig" column="pipeline_config" />
+        <result property="projectId"     column="project_id"     />
+        <result property="status"        column="status"         />
+        <result property="lastExecutionTime" column="last_execution_time" />
+        <result property="executionCount" column="execution_count" />
+        <result property="successCount"   column="success_count"   />
+        <result property="createTime"    column="create_time"    />
+        <result property="updateTime"    column="update_time"    />
+        <result property="createBy"      column="create_by"      />
+        <result property="updateBy"      column="update_by"      />
+        <result property="remark"        column="remark"         />
+    </resultMap>
+
+    <!-- 查询流水线统计信息 -->
+    <select id="selectPipelineStatistics" resultType="java.util.Map">
+        SELECT
+            COUNT(*) as totalPipelines,
+            COUNT(CASE WHEN status = 'ACTIVE' THEN 1 END) as activePipelines,
+            COUNT(CASE WHEN status = 'INACTIVE' THEN 1 END) as inactivePipelines,
+            COUNT(CASE WHEN last_execution_time >= #{startTime} THEN 1 END) as recentlyExecuted,
+            SUM(execution_count) as totalExecutions,
+            SUM(success_count) as totalSuccesses,
+            CASE WHEN SUM(execution_count) > 0
+                 THEN ROUND(SUM(success_count) * 100.0 / SUM(execution_count), 2)
+                 ELSE 0 END as overallSuccessRate
+        FROM pipeline
+        WHERE project_id = #{projectId}
+          AND create_time >= #{startTime}
+    </select>
+
+    <!-- 查询项目下流水线列表 -->
+    <select id="selectPipelinesByProject" resultMap="PipelineResult">
+        <include refid="selectPipelineVo"/>
+        WHERE project_id = #{projectId}
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        ORDER BY update_time DESC
+    </select>
+
+    <!-- 查询指定类型的流水线 -->
+    <select id="selectPipelinesByType" resultMap="PipelineResult">
+        <include refid="selectPipelineVo"/>
+        WHERE pipeline_type = #{pipelineType}
+          AND project_id = #{projectId}
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 查询可触发的流水线 -->
+    <select id="selectTriggerablePipelines" resultMap="PipelineResult">
+        <include refid="selectPipelineVo"/>
+        WHERE status = 'ACTIVE'
+          AND project_id = #{projectId}
+          AND (trigger_type = 'MANUAL' OR trigger_type = 'WEBHOOK')
+        ORDER BY last_execution_time ASC NULLS FIRST
+    </select>
+
+    <!-- 更新流水线状态 -->
+    <update id="updatePipelineStatus">
+        UPDATE pipeline
+        SET status = #{status},
+            update_time = NOW()
+        WHERE pipeline_id = #{pipelineId}
+    </update>
+
+    <!-- 批量更新流水线状态 -->
+    <update id="updatePipelineStatusBatch">
+        UPDATE pipeline
+        SET status = #{status},
+            update_time = NOW()
+        WHERE pipeline_id IN
+        <foreach collection="pipelineIds" item="pipelineId" open="(" separator="," close=")">
+            #{pipelineId}
+        </foreach>
+    </update>
+
+    <!-- 查询流水线执行次数 -->
+    <select id="selectExecutionCount" resultType="java.lang.Long">
+        SELECT COALESCE(execution_count, 0)
+        FROM pipeline
+        WHERE pipeline_id = #{pipelineId}
+    </select>
+
+    <!-- 查询流水线成功率 -->
+    <select id="selectSuccessRate" resultType="java.lang.Double">
+        SELECT CASE
+               WHEN execution_count > 0
+               THEN ROUND(success_count * 100.0 / execution_count, 2)
+               ELSE 0 END
+        FROM pipeline
+        WHERE pipeline_id = #{pipelineId}
+    </select>
+
+    <!-- 查询最近执行的流水线 -->
+    <select id="selectRecentlyExecutedPipelines" resultMap="PipelineResult">
+        <include refid="selectPipelineVo"/>
+        WHERE last_execution_time IS NOT NULL
+          AND project_id = #{projectId}
+        ORDER BY last_execution_time DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 查询流水线模板 -->
+    <select id="selectPipelineTemplate" resultType="java.lang.String">
+        SELECT template_config
+        FROM pipeline_template
+        WHERE template_type = #{templateType}
+    </select>
+
+    <!-- 插入流水线模板 -->
+    <insert id="insertPipelineTemplate">
+        INSERT INTO pipeline_template (template_type, template_config, create_time)
+        VALUES (#{templateType}, #{templateConfig}, NOW())
+    </insert>
+
+    <!-- 更新流水线模板 -->
+    <update id="updatePipelineTemplate">
+        UPDATE pipeline_template
+        SET template_config = #{templateConfig},
+            update_time = NOW()
+        WHERE template_type = #{templateType}
+    </update>
+
+    <!-- 删除流水线模板 -->
+    <delete id="deletePipelineTemplate">
+        DELETE FROM pipeline_template
+        WHERE template_type = #{templateType}
+    </delete>
+
+    <!-- 查询所有流水线模板 -->
+    <select id="selectAllPipelineTemplates" resultType="java.util.Map">
+        SELECT template_type as templateType,
+               template_config as templateConfig,
+               create_time as createTime,
+               update_time as updateTime
+        FROM pipeline_template
+        ORDER BY template_type
+    </select>
+
+    <!-- 检查流水线名称是否存在 -->
+    <select id="checkPipelineNameExists" resultType="java.lang.Long">
+        SELECT COUNT(*)
+        FROM pipeline
+        WHERE pipeline_name = #{pipelineName}
+          AND project_id = #{projectId}
+        <if test="excludeId != null">
+          AND pipeline_id != #{excludeId}
+        </if>
+    </select>
+
+    <!-- 查询流水线使用统计 -->
+    <select id="selectPipelineUsageStats" resultType="java.util.Map">
+        SELECT
+            p.pipeline_id as pipelineId,
+            p.pipeline_name as pipelineName,
+            p.execution_count as executionCount,
+            p.success_count as successCount,
+            CASE WHEN p.execution_count > 0
+                 THEN ROUND(p.success_count * 100.0 / p.execution_count, 2)
+                 ELSE 0 END as successRate,
+            p.last_execution_time as lastExecutionTime
+        FROM pipeline p
+        WHERE p.project_id = #{projectId}
+          AND p.execution_count > 0
+        ORDER BY p.execution_count DESC
+    </select>
+
+    <!-- 查询流水线类型分布 -->
+    <select id="selectPipelineTypeDistribution" resultType="java.util.Map">
+        SELECT
+            pipeline_type as pipelineType,
+            COUNT(*) as count,
+            ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM pipeline WHERE project_id = #{projectId}), 2) as percentage
+        FROM pipeline
+        WHERE project_id = #{projectId}
+        GROUP BY pipeline_type
+        ORDER BY count DESC
+    </select>
+
+    <!-- 查询流水线执行趋势 -->
+    <select id="selectPipelineExecutionTrend" resultType="java.util.Map">
+        SELECT
+            DATE(last_execution_time) as date,
+            COUNT(*) as executionCount,
+            COUNT(CASE WHEN status = 'SUCCESS' THEN 1 END) as successCount,
+            COUNT(CASE WHEN status = 'FAILED' THEN 1 END) as failureCount
+        FROM pipeline_execution
+        WHERE project_id = #{projectId}
+          AND start_time >= DATE_SUB(NOW(), INTERVAL #{days} DAY)
+        GROUP BY DATE(last_execution_time)
+        ORDER BY date DESC
+    </select>
+
+    <!-- 查询热门流水线 -->
+    <select id="selectPopularPipelines" resultMap="PipelineResult">
+        <include refid="selectPipelineVo"/>
+        WHERE project_id = #{projectId}
+          AND execution_count > 0
+        ORDER BY execution_count DESC, last_execution_time DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 查询失败率高的流水线 -->
+    <select id="selectHighFailureRatePipelines" resultType="java.util.Map">
+        SELECT
+            p.pipeline_id as pipelineId,
+            p.pipeline_name as pipelineName,
+            p.execution_count as executionCount,
+            p.success_count as successCount,
+            CASE WHEN p.execution_count > 0
+                 THEN ROUND((p.execution_count - p.success_count) * 100.0 / p.execution_count, 2)
+                 ELSE 0 END as failureRate,
+            COUNT(CASE WHEN pe.status = 'FAILED'
+                       AND pe.start_time >= DATE_SUB(NOW(), INTERVAL #{days} DAY)
+                       THEN 1 END) as recentFailures
+        FROM pipeline p
+        LEFT JOIN pipeline_execution pe ON p.pipeline_id = pe.pipeline_id
+        WHERE p.project_id = #{projectId}
+          AND p.execution_count >= 5
+        GROUP BY p.pipeline_id, p.pipeline_name, p.execution_count, p.success_count
+        HAVING failureRate > 20
+        ORDER BY failureRate DESC, recentFailures DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 查询长时间未执行的流水线 -->
+    <select id="selectLongTimeNoExecutedPipelines" resultMap="PipelineResult">
+        <include refid="selectPipelineVo"/>
+        WHERE project_id = #{projectId}
+          AND status = 'ACTIVE'
+          AND (last_execution_time IS NULL
+               OR last_execution_time <= DATE_SUB(NOW(), INTERVAL #{days} DAY))
+        ORDER BY last_execution_time ASC NULLS FIRST
+    </select>
+
+    <!-- 更新流水线最后执行时间 -->
+    <update id="updateLastExecutionTime">
+        UPDATE pipeline
+        SET last_execution_time = #{lastExecutionTime},
+            execution_count = execution_count + 1,
+            update_time = NOW()
+        WHERE pipeline_id = #{pipelineId}
+    </update>
+
+    <!-- 查询流水线依赖关系 -->
+    <select id="selectPipelineDependencies" resultMap="PipelineResult">
+        <include refid="selectPipelineVo"/>
+        WHERE pipeline_id IN (
+            SELECT dependency_pipeline_id
+            FROM pipeline_dependency
+            WHERE pipeline_id = #{pipelineId}
+        )
+        ORDER BY pipeline_name
+    </select>
+
+    <!-- 查询依赖指定流水线的流水线列表 -->
+    <select id="selectDependentPipelines" resultMap="PipelineResult">
+        <include refid="selectPipelineVo"/>
+        WHERE pipeline_id IN (
+            SELECT pipeline_id
+            FROM pipeline_dependency
+            WHERE dependency_pipeline_id = #{pipelineId}
+        )
+        ORDER BY pipeline_name
+    </select>
+
+    <!-- 清理无效的流水线依赖 -->
+    <delete id="cleanInvalidDependencies">
+        DELETE pd FROM pipeline_dependency pd
+        LEFT JOIN pipeline p1 ON pd.pipeline_id = p1.pipeline_id
+        LEFT JOIN pipeline p2 ON pd.dependency_pipeline_id = p2.pipeline_id
+        WHERE p1.pipeline_id IS NULL
+           OR p2.pipeline_id IS NULL
+           OR p1.project_id = #{projectId}
+    </delete>
+
+    <sql id="selectPipelineVo">
+        SELECT pipeline_id, pipeline_name, pipeline_type, trigger_type, pipeline_config,
+               project_id, status, last_execution_time, execution_count, success_count,
+               create_time, update_time, create_by, update_by, remark
+        FROM pipeline
+    </sql>
+
+</mapper>

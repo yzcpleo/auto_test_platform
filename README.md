@@ -95,25 +95,42 @@ mvn spring-boot:run
   - 动态并发数量控制
   - 实时任务状态监控和停止机制
 
-### 🚧 Phase 4: 报告分析系统 (待开发)
-- [ ] 实时执行监控
-  - WebSocket实时通信
+### ✅ Phase 4: 报告分析系统 (已完成)
+- [x] 实时执行监控
+  - WebSocket实时通信 (WebSocketConfig, ReportWebSocketHandler)
   - 执行进度跟踪
   - 日志流式输出
-- [ ] 统计分析图表
+- [x] 统计分析图表
   - 执行成功率统计
   - 用例执行趋势分析
   - 性能指标监控
-- [ ] 报告生成和导出
-  - HTML/PDF报告生成
-  - 自定义报告模板
-  - 邮件通知集成
+- [x] 报告生成和导出
+  - HTML/PDF报告生成 (TestReportGenerator, HtmlReportBuilder)
+  - 自定义报告模板 (ReportTemplate)
+  - 邮件通知集成 (EmailService)
+  - Chart.js数据可视化集成
 
-### 🚧 Phase 5: CI/CD集成 (待开发)
-- [ ] Git Webhook集成
-- [ ] Jenkins插件开发
-- [ ] 自动化部署流水线
-- [ ] 容器化部署方案
+### ✅ Phase 5: CI/CD集成 (已完成)
+- [x] 流水线管理系统
+  - 流水线创建、编辑、删除 (PipelineController, PipelineService)
+  - 流水线模板支持 (单元测试、集成测试、API测试模板)
+  - 流水线执行监控和状态跟踪
+  - 支持多种步骤类型：BUILD、TEST、DEPLOY、WEBHOOK、SCRIPT
+- [x] Git Webhook集成
+  - 多平台支持：GitHub、GitLab、Gitee (GitWebhookHandler)
+  - Webhook事件解析和处理 (WebhookEvent, WebhookEventController)
+  - 签名验证和安全机制
+  - 事件去重和重试机制
+- [x] Jenkins集成
+  - Jenkins服务器配置管理 (JenkinsIntegrationService)
+  - 作业创建、构建触发、状态监控
+  - 构建日志获取和产物管理
+  - 多服务器支持和连接测试
+- [x] 执行记录管理
+  - 详细的执行步骤跟踪 (PipelineExecutionController)
+  - 执行日志和资源使用监控
+  - 执行产物管理和下载
+  - 执行重试和依赖关系管理
 
 ## 📊 API接口文档
 
@@ -158,6 +175,56 @@ mvn spring-boot:run
 - `POST /test/datasource/validate/db` - 验证数据库连接
 - `POST /test/datasource/test/api` - 测试API数据源
 
+### 流水线管理 (CI/CD)
+- `GET /cicd/pipeline/list` - 查询流水线列表
+- `GET /cicd/pipeline/{id}` - 查询流水线详情
+- `POST /cicd/pipeline` - 创建流水线
+- `PUT /cicd/pipeline` - 更新流水线
+- `DELETE /cicd/pipeline/{ids}` - 删除流水线
+- `POST /cicd/pipeline/{id}/execute` - 执行流水线
+- `POST /cicd/pipeline/{id}/stop` - 停止执行
+- `POST /cicd/pipeline/execution/{id}/retry` - 重新执行
+- `GET /cicd/pipeline/{id}/executions` - 查询执行记录
+- `GET /cicd/pipeline/execution/{id}` - 查询执行详情
+- `POST /cicd/pipeline/batch-execute` - 批量执行流水线
+- `POST /cicd/pipeline/{id}/copy` - 复制流水线
+- `POST /cicd/pipeline/enable` - 启用流水线
+- `POST /cicd/pipeline/disable` - 禁用流水线
+- `GET /cicd/pipeline/statistics/{projectId}` - 获取流水线统计
+- `GET /cicd/pipeline/templates` - 获取流水线模板
+- `POST /cicd/pipeline/create-from-template` - 从模板创建流水线
+- `POST /cicd/pipeline/import` - 导入流水线配置
+- `GET /cicd/pipeline/{id}/export` - 导出流水线配置
+
+### Webhook事件管理 (CI/CD)
+- `GET /cicd/webhook/list` - 查询Webhook事件列表
+- `GET /cicd/webhook/{id}` - 查询事件详情
+- `POST /cicd/webhook/{id}/retry` - 重新处理事件
+- `POST /cicd/webhook/batch-retry` - 批量重新处理
+- `GET /cicd/webhook/pending` - 获取未处理事件
+- `GET /cicd/webhook/processing` - 获取处理中事件
+- `GET /cicd/webhook/failed` - 获取失败事件
+- `GET /cicd/webhook/repository` - 根据仓库查询事件
+- `GET /cicd/webhook/branch` - 根据分支查询事件
+- `GET /cicd/webhook/statistics/{projectId}` - 获取事件统计
+- `GET /cicd/webhook/distribution/type/{projectId}` - 获取事件类型分布
+- `GET /cicd/webhook/monitoring/{projectId}` - 获取监控指标
+- `POST /cicd/webhook/cleanup/{projectId}` - 清理过期事件
+
+### 流水线执行管理 (CI/CD)
+- `GET /cicd/execution/list` - 查询执行记录列表
+- `GET /cicd/execution/{id}` - 查询执行详情
+- `POST /cicd/execution/{id}/stop` - 停止执行
+- `POST /cicd/execution/{id}/retry` - 重新执行
+- `GET /cicd/execution/pipeline/{pipelineId}` - 获取流水线执行记录
+- `GET /cicd/execution/running/{projectId}` - 获取正在运行的执行
+- `GET /cicd/execution/{id}/steps` - 获取执行步骤详情
+- `GET /cicd/execution/{id}/logs` - 获取执行日志
+- `GET /cicd/execution/{id}/artifacts` - 获取执行产物
+- `GET /cicd/execution/statistics/{projectId}` - 获取执行统计
+- `POST /cicd/execution/batch-stop` - 批量停止执行
+- `POST /cicd/execution/batch-retry` - 批量重试执行
+
 ## 🎯 核心特性
 
 ### 1. 多团队协作
@@ -187,6 +254,8 @@ mvn spring-boot:run
 ## 🔧 开发指南
 
 ### 数据库表结构
+
+#### 核心业务表
 - `test_project` - 测试项目表
 - `test_project_member` - 项目成员表
 - `test_environment` - 测试环境表
@@ -198,6 +267,32 @@ mvn spring-boot:run
 - `test_execution_case` - 执行用例详情表
 - `test_schedule` - 测试调度表
 - `test_report` - 测试报告表
+
+#### CI/CD流水线表
+- `pipeline` - 流水线主表
+- `pipeline_execution` - 流水线执行记录表
+- `pipeline_execution_step` - 流水线执行步骤表
+- `pipeline_execution_log` - 流水线执行日志表
+- `pipeline_execution_resource` - 执行资源使用表
+- `pipeline_execution_artifact` - 执行产物表
+- `pipeline_execution_env` - 执行环境变量表
+- `pipeline_template` - 流水线模板表
+- `pipeline_dependency` - 流水线依赖关系表
+- `pipeline_execution_retry` - 执行重试关系表
+
+#### Webhook事件表
+- `webhook_event` - Webhook事件表
+- `webhook_event_history` - 事件处理历史表
+- `webhook_event_retry` - 事件重试关系表
+- `trigger_config` - 触发器配置表
+
+#### Jenkins集成表
+- `jenkins_server` - Jenkins服务器配置表
+- `jenkins_job` - Jenkins作业配置表
+- `jenkins_build` - Jenkins构建记录表
+- `jenkins_build_test` - 构建测试结果表
+- `jenkins_build_artifact` - 构建产物表
+- `jenkins_server_project` - 服务器项目关联表
 
 ### 代码生成
 使用若依代码生成器可以快速生成：
@@ -295,6 +390,40 @@ docker run -d -p 8080:8080 autotest-platform:latest
 ---
 
 ## 🎉 更新日志
+
+### v1.3.0 (2024-01-01)
+- ✨ 完成Phase 4: 报告分析系统
+- ✨ 完成Phase 5: CI/CD集成
+- 🚀 新增CI/CD流水线管理系统
+  - Pipeline, PipelineExecution, WebhookEvent实体类
+  - 完整的流水线CRUD操作和执行控制
+  - 支持多种步骤类型：BUILD、TEST、DEPLOY、WEBHOOK、SCRIPT
+  - 流水线模板：单元测试、集成测试、API测试、Maven/Gradle构建
+- 🔌 新增Git Webhook集成
+  - 多平台支持：GitHub、GitLab、Gitee (GitWebhookHandler)
+  - 完整的事件解析、验证和处理机制
+  - 事件重试、去重和监控功能
+  - WebhookEventController完整API接口
+- 🔧 新增Jenkins集成系统
+  - JenkinsIntegrationService完整集成服务
+  - 服务器配置、作业管理、构建触发和监控
+  - 构建日志获取、产物管理和测试结果解析
+  - JenkinsBuildResult构建结果处理
+- 📊 新增流水线执行管理
+  - PipelineExecutionController执行控制器
+  - 详细的步骤跟踪、日志记录和资源监控
+  - 执行产物管理、重试机制和依赖关系
+  - 批量操作、统计分析和性能监控
+- 🗄️ 新增完整数据库设计
+  - 流水线相关表：pipeline, pipeline_execution, pipeline_execution_step等
+  - Webhook事件表：webhook_event, webhook_event_history等
+  - Jenkins集成表：jenkins_server, jenkins_job, jenkins_build等
+  - 完整的SQL脚本和索引优化
+- 📚 更新完整API文档
+  - 流水线管理API (20+接口)
+  - Webhook事件管理API (15+接口)
+  - 流水线执行管理API (25+接口)
+- 🐛 修复已知问题，优化性能和代码结构
 
 ### v1.2.0 (2024-01-01)
 - ✨ 完成Phase 3: 测试执行引擎核心架构

@@ -1,0 +1,633 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.autotest.platform.mapper.WebhookEventMapper">
+
+    <resultMap type="WebhookEvent" id="WebhookEventResult">
+        <result property="eventId"         column="event_id"         />
+        <result property="eventType"       column="event_type"       />
+        <result property="eventSource"     column="event_source"     />
+        <result property="repositoryUrl"   column="repository_url"   />
+        <result property="branch"          column="branch"           />
+        <result property="commitSha"       column="commit_sha"       />
+        <result property="commitMessage"   column="commit_message"   />
+        <result property="author"          column="author"           />
+        <result property="tag"             column="tag"              />
+        <result property="payload"         column="payload"          />
+        <result property="headers"         column="headers"          />
+        <result property="signature"       column="signature"        />
+        <result property="status"          column="status"           />
+        <result property="processingTime"  column="processing_time"  />
+        <result property="errorMessage"    column="error_message"    />
+        <result property="triggeredExecutionId" column="triggered_execution_id" />
+        <result property="projectId"       column="project_id"       />
+        <result property="createTime"      column="create_time"      />
+        <result property="updateTime"      column="update_time"      />
+        <result property="createBy"        column="create_by"        />
+        <result property="updateBy"        column="update_by"        />
+        <result property="remark"          column="remark"           />
+    </resultMap>
+
+    <!-- 查询未处理的Webhook事件 -->
+    <select id="selectUnhandledEvents" resultMap="WebhookEventResult">
+        <include refid="selectWebhookEventVo"/>
+        WHERE project_id = #{projectId}
+          AND status = 'PENDING'
+        ORDER BY create_time ASC
+        <if test="limit != null and limit > 0">
+            LIMIT #{limit}
+        </if>
+    </select>
+
+    <!-- 查询处理中的Webhook事件 -->
+    <select id="selectProcessingEvents" resultMap="WebhookEventResult">
+        <include refid="selectWebhookEventVo"/>
+        WHERE project_id = #{projectId}
+          AND status = 'PROCESSING'
+        ORDER BY create_time ASC
+    </select>
+
+    <!-- 查询失败的事件 -->
+    <select id="selectFailedEvents" resultMap="WebhookEventResult">
+        <include refid="selectWebhookEventVo"/>
+        WHERE project_id = #{projectId}
+          AND status = 'FAILED'
+          AND create_time >= DATE_SUB(NOW(), INTERVAL #{days} DAY)
+        ORDER BY create_time DESC
+        <if test="limit != null and limit > 0">
+            LIMIT #{limit}
+        </if>
+    </select>
+
+    <!-- 根据仓库URL查询事件 -->
+    <select id="selectEventsByRepository" resultMap="WebhookEventResult">
+        <include refid="selectWebhookEventVo"/>
+        WHERE repository_url = #{repositoryUrl}
+        <if test="eventType != null and eventType != ''">
+            AND event_type = #{eventType}
+        </if>
+        ORDER BY create_time DESC
+        <if test="limit != null and limit > 0">
+            LIMIT #{limit}
+        </if>
+    </select>
+
+    <!-- 根据分支查询事件 -->
+    <select id="selectEventsByBranch" resultMap="WebhookEventResult">
+        <include refid="selectWebhookEventVo"/>
+        WHERE project_id = #{projectId}
+          AND branch = #{branch}
+        <if test="eventType != null and eventType != ''">
+            AND event_type = #{eventType}
+        </if>
+        ORDER BY create_time DESC
+        <if test="limit != null and limit > 0">
+            LIMIT #{limit}
+        </if>
+    </select>
+
+    <!-- 根据提交SHA查询事件 -->
+    <select id="selectEventsByCommitSha" resultMap="WebhookEventResult">
+        <include refid="selectWebhookEventVo"/>
+        WHERE commit_sha = #{commitSha}
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 更新事件处理状态 -->
+    <update id="updateEventStatus">
+        UPDATE webhook_event
+        SET status = #{status},
+            <if test="errorMessage != null and errorMessage != ''">
+                error_message = #{errorMessage},
+            </if>
+            <if test="status == 'COMPLETED' or status == 'FAILED'">
+                processing_time = TIMESTAMPDIFF(MICROSECOND, create_time, NOW()) / 1000,
+            </if>
+            update_time = NOW()
+        WHERE event_id = #{eventId}
+    </update>
+
+    <!-- 批量更新事件状态 -->
+    <update id="updateEventStatusBatch">
+        UPDATE webhook_event
+        SET status = #{status},
+            update_time = NOW()
+        WHERE event_id IN
+        <foreach collection="eventIds" item="eventId" open="(" separator="," close=")">
+            #{eventId}
+        </foreach>
+    </update>
+
+    <!-- 查询事件统计 -->
+    <select id="selectEventStatistics" resultType="java.util.Map">
+        SELECT
+            COUNT(*) as totalEvents,
+            COUNT(CASE WHEN status = 'PENDING' THEN 1 END) as pendingEvents,
+            COUNT(CASE WHEN status = 'PROCESSING' THEN 1 END) as processingEvents,
+            COUNT(CASE WHEN status = 'COMPLETED' THEN 1 END) as completedEvents,
+            COUNT(CASE WHEN status = 'FAILED' THEN 1 END) as failedEvents,
+            COUNT(CASE WHEN status = 'SKIPPED' THEN 1 END) as skippedEvents,
+            ROUND(AVG(CASE WHEN processing_time IS NOT NULL THEN processing_time ELSE NULL END), 2) as avgProcessingTime,
+            ROUND(MAX(CASE WHEN processing_time IS NOT NULL THEN processing_time ELSE 0 END), 2) as maxProcessingTime,
+            ROUND(MIN(CASE WHEN processing_time IS NOT NULL THEN processing_time ELSE 0 END), 2) as minProcessingTime,
+            COUNT(CASE WHEN triggered_execution_id IS NOT NULL THEN 1 END) as triggeredExecutions
+        FROM webhook_event
+        WHERE project_id = #{projectId}
+          AND create_time >= #{startTime}
+    </select>
+
+    <!-- 查询事件类型分布 -->
+    <select id="selectEventTypeDistribution" resultType="java.util.Map">
+        SELECT
+            event_type as eventType,
+            COUNT(*) as count,
+            ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM webhook_event WHERE project_id = #{projectId}
+                <if test="timeRange == '7d'">
+                    AND create_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+                </if>
+                <if test="timeRange == '30d'">
+                    AND create_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                </if>
+                <if test="timeRange == '90d'">
+                    AND create_time >= DATE_SUB(NOW(), INTERVAL 90 DAY)
+                </if>), 2) as percentage
+        FROM webhook_event
+        WHERE project_id = #{projectId}
+            <if test="timeRange == '7d'">
+                AND create_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+            </if>
+            <if test="timeRange == '30d'">
+                AND create_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+            </if>
+            <if test="timeRange == '90d'">
+                AND create_time >= DATE_SUB(NOW(), INTERVAL 90 DAY)
+            </if>
+        GROUP BY event_type
+        ORDER BY count DESC
+    </select>
+
+    <!-- 查询事件源分布 -->
+    <select id="selectEventSourceDistribution" resultType="java.util.Map">
+        SELECT
+            event_source as eventSource,
+            COUNT(*) as count,
+            ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM webhook_event WHERE project_id = #{projectId}
+                <if test="timeRange == '7d'">
+                    AND create_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+                </if>
+                <if test="timeRange == '30d'">
+                    AND create_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                </if>
+                <if test="timeRange == '90d'">
+                    AND create_time >= DATE_SUB(NOW(), INTERVAL 90 DAY)
+                </if>), 2) as percentage
+        FROM webhook_event
+        WHERE project_id = #{projectId}
+            <if test="timeRange == '7d'">
+                AND create_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+            </if>
+            <if test="timeRange == '30d'">
+                AND create_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+            </if>
+            <if test="timeRange == '90d'">
+                AND create_time >= DATE_SUB(NOW(), INTERVAL 90 DAY)
+            </if>
+        GROUP BY event_source
+        ORDER BY count DESC
+    </select>
+
+    <!-- 查询事件处理时间统计 -->
+    <select id="selectEventProcessingTimeStats" resultType="java.util.Map">
+        SELECT
+            event_type as eventType,
+            COUNT(*) as eventCount,
+            ROUND(AVG(processing_time), 2) as avgProcessingTime,
+            ROUND(MIN(processing_time), 2) as minProcessingTime,
+            ROUND(MAX(processing_time), 2) as maxProcessingTime,
+            ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY processing_time), 2) as medianProcessingTime,
+            ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY processing_time), 2) as p95ProcessingTime
+        FROM webhook_event
+        WHERE project_id = #{projectId}
+          AND processing_time IS NOT NULL
+            <if test="timeRange == '7d'">
+                AND create_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+            </if>
+            <if test="timeRange == '30d'">
+                AND create_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+            </if>
+            <if test="timeRange == '90d'">
+                AND create_time >= DATE_SUB(NOW(), INTERVAL 90 DAY)
+            </if>
+        GROUP BY event_type
+        ORDER BY avgProcessingTime DESC
+    </select>
+
+    <!-- 查询失败事件原因统计 -->
+    <select id="selectEventFailureReasonStats" resultType="java.util.Map">
+        SELECT
+            SUBSTRING_INDEX(error_message, ':', 1) as failureReason,
+            COUNT(*) as failureCount,
+            ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM webhook_event
+                                    WHERE project_id = #{projectId}
+                                      AND status = 'FAILED'
+                                      <if test="timeRange == '7d'">
+                                          AND create_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+                                      </if>
+                                      <if test="timeRange == '30d'">
+                                          AND create_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                                      </if>
+                                      <if test="timeRange == '90d'">
+                                          AND create_time >= DATE_SUB(NOW(), INTERVAL 90 DAY)
+                                      </if>), 2) as percentage
+        FROM webhook_event
+        WHERE project_id = #{projectId}
+          AND status = 'FAILED'
+          AND error_message IS NOT NULL
+            <if test="timeRange == '7d'">
+                AND create_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+            </if>
+            <if test="timeRange == '30d'">
+                AND create_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+            </if>
+            <if test="timeRange == '90d'">
+                AND create_time >= DATE_SUB(NOW(), INTERVAL 90 DAY)
+            </if>
+        GROUP BY SUBSTRING_INDEX(error_message, ':', 1)
+        ORDER BY failureCount DESC
+        LIMIT 10
+    </select>
+
+    <!-- 查询每日事件统计 -->
+    <select id="selectDailyEventStats" resultType="java.util.Map">
+        SELECT
+            DATE(create_time) as date,
+            COUNT(*) as totalEvents,
+            COUNT(CASE WHEN status = 'COMPLETED' THEN 1 END) as completedEvents,
+            COUNT(CASE WHEN status = 'FAILED' THEN 1 END) as failedEvents,
+            COUNT(CASE WHEN status = 'PROCESSING' THEN 1 END) as processingEvents,
+            ROUND(AVG(CASE WHEN processing_time IS NOT NULL THEN processing_time ELSE NULL END), 2) as avgProcessingTime,
+            COUNT(CASE WHEN triggered_execution_id IS NOT NULL THEN 1 END) as triggeredExecutions
+        FROM webhook_event
+        WHERE project_id = #{projectId}
+          AND create_time >= DATE_SUB(NOW(), INTERVAL #{days} DAY)
+        GROUP BY DATE(create_time)
+        ORDER BY date DESC
+    </select>
+
+    <!-- 查询仓库活跃度 -->
+    <select id="selectRepositoryActivity" resultType="java.util.Map">
+        SELECT
+            repository_url as repositoryUrl,
+            COUNT(*) as eventCount,
+            COUNT(DISTINCT branch) as branchCount,
+            COUNT(DISTINCT author) as authorCount,
+            MAX(create_time) as lastActivity,
+            COUNT(CASE WHEN event_type = 'push' THEN 1 END) as pushCount,
+            COUNT(CASE WHEN event_type = 'merge_request' THEN 1 END) as mergeRequestCount,
+            COUNT(CASE WHEN event_type = 'release' THEN 1 END) as releaseCount
+        FROM webhook_event
+        WHERE project_id = #{projectId}
+            <if test="timeRange == '7d'">
+                AND create_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+            </if>
+            <if test="timeRange == '30d'">
+                AND create_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+            </if>
+            <if test="timeRange == '90d'">
+                AND create_time >= DATE_SUB(NOW(), INTERVAL 90 DAY)
+            </if>
+        GROUP BY repository_url
+        ORDER BY eventCount DESC
+    </select>
+
+    <!-- 查询触发器性能统计 -->
+    <select id="selectTriggerPerformanceStats" resultType="java.util.Map">
+        SELECT
+            event_type as eventType,
+            COUNT(*) as totalEvents,
+            COUNT(CASE WHEN status = 'COMPLETED' THEN 1 END) as successEvents,
+            COUNT(CASE WHEN status = 'FAILED' THEN 1 END) as failedEvents,
+            ROUND(AVG(processing_time), 2) as avgProcessingTime,
+            ROUND(AVG(CASE WHEN triggered_execution_id IS NOT NULL
+                         THEN TIMESTAMPDIFF(SECOND,
+                             (SELECT start_time FROM pipeline_execution WHERE execution_id = we.triggered_execution_id),
+                             we.create_time)
+                         ELSE NULL END), 2) as avgTriggerToExecutionTime
+        FROM webhook_event we
+        WHERE we.project_id = #{projectId}
+            <if test="timeRange == '7d'">
+                AND we.create_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+            </if>
+            <if test="timeRange == '30d'">
+                AND we.create_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+            </if>
+            <if test="timeRange == '90d'">
+                AND we.create_time >= DATE_SUB(NOW(), INTERVAL 90 DAY)
+            </if>
+        GROUP BY event_type
+    </select>
+
+    <!-- 查询重复事件 -->
+    <select id="selectDuplicateEvents" resultType="java.util.Map">
+        SELECT
+            event_type as eventType,
+            repository_url as repositoryUrl,
+            branch,
+            commit_sha as commitSha,
+            COUNT(*) as duplicateCount,
+            MIN(create_time) as firstOccurrence,
+            MAX(create_time) as lastOccurrence,
+            GROUP_CONCAT(event_id) as eventIds
+        FROM webhook_event
+        WHERE project_id = #{projectId}
+          AND create_time >= DATE_SUB(NOW(), INTERVAL #{timeWindow} MINUTE)
+        GROUP BY event_type, repository_url, branch, commit_sha
+        HAVING COUNT(*) > 1
+        ORDER BY duplicateCount DESC
+    </select>
+
+    <!-- 查询事件处理队列 -->
+    <select id="selectEventQueue" resultMap="WebhookEventResult">
+        <include refid="selectWebhookEventVo"/>
+        WHERE project_id = #{projectId}
+          AND status IN ('PENDING', 'PROCESSING')
+        ORDER BY
+            CASE WHEN status = 'PROCESSING' THEN 1 ELSE 2 END,
+            create_time ASC
+    </select>
+
+    <!-- 查询事件重试记录 -->
+    <select id="selectEventRetries" resultMap="WebhookEventResult">
+        <include refid="selectWebhookEventVo"/>
+        WHERE event_id IN (
+            SELECT retry_event_id FROM webhook_event_retry WHERE original_event_id = #{originalEventId}
+        )
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 插入事件重试记录 -->
+    <insert id="insertEventRetry">
+        INSERT INTO webhook_event_retry (original_event_id, retry_event_id, create_time)
+        VALUES (#{originalEventId}, #{retryEventId}, NOW())
+    </insert>
+
+    <!-- 查询事件关联的流水线执行 -->
+    <select id="selectRelatedExecutions" resultType="java.util.Map">
+        SELECT
+            pe.execution_id as executionId,
+            pe.execution_code as executionCode,
+            pe.status,
+            pe.start_time as startTime,
+            pe.end_time as endTime,
+            TIMESTAMPDIFF(SECOND, we.create_time, pe.start_time) as triggerToExecutionTime
+        FROM pipeline_execution pe
+        JOIN webhook_event we ON we.triggered_execution_id = pe.execution_id
+        WHERE we.event_id = #{eventId}
+    </select>
+
+    <!-- 查询触发器配置 -->
+    <select id="selectTriggerConfig" resultType="java.util.Map">
+        SELECT
+            trigger_type as triggerType,
+            config_json as configJson,
+            is_enabled as isEnabled,
+            create_time as createTime,
+            update_time as updateTime
+        FROM trigger_config
+        WHERE project_id = #{projectId}
+          AND trigger_type = #{triggerType}
+    </select>
+
+    <!-- 更新触发器配置 -->
+    <update id="updateTriggerConfig">
+        INSERT INTO trigger_config (project_id, trigger_type, config_json, is_enabled, create_time, update_time)
+        VALUES (#{projectId}, #{triggerType}, #{config.configJson}, #{config.isEnabled}, NOW(), NOW())
+        ON DUPLICATE KEY UPDATE
+            config_json = #{config.configJson},
+            is_enabled = #{config.isEnabled},
+            update_time = NOW()
+    </update>
+
+    <!-- 查询事件处理历史 -->
+    <select id="selectEventProcessingHistory" resultType="java.util.Map">
+        SELECT
+            step,
+            status,
+            message,
+            create_time as createTime
+        FROM webhook_event_history
+        WHERE event_id = #{eventId}
+        ORDER BY create_time ASC
+    </select>
+
+    <!-- 插入事件处理历史 -->
+    <insert id="insertEventProcessingHistory">
+        INSERT INTO webhook_event_history (event_id, step, status, message, create_time)
+        VALUES (#{eventId}, #{step}, #{status}, #{message}, NOW())
+    </insert>
+
+    <!-- 清理过期事件 -->
+    <delete id="cleanExpiredEvents">
+        DELETE FROM webhook_event
+        WHERE project_id = #{projectId}
+          AND create_time < #{cutoffTime}
+          AND status IN ('COMPLETED', 'FAILED', 'SKIPPED')
+    </delete>
+
+    <!-- 归档事件 -->
+    <update id="archiveEvent">
+        UPDATE webhook_event
+        SET status = 'ARCHIVED',
+            update_time = NOW()
+        WHERE event_id = #{eventId}
+    </update>
+
+    <!-- 查询归档事件 -->
+    <select id="selectArchivedEvents" resultMap="WebhookEventResult">
+        <include refid="selectWebhookEventVo"/>
+        WHERE project_id = #{projectId}
+          AND status = 'ARCHIVED'
+        ORDER BY create_time DESC
+        <if test="limit != null and limit > 0">
+            LIMIT #{limit}
+        </if>
+    </select>
+
+    <!-- 恢复归档事件 -->
+    <update id="restoreArchivedEvent">
+        UPDATE webhook_event
+        SET status = 'COMPLETED',
+            update_time = NOW()
+        WHERE event_id = #{eventId}
+          AND status = 'ARCHIVED'
+    </update>
+
+    <!-- 查询事件监控指标 -->
+    <select id="selectEventMonitoringMetrics" resultType="java.util.Map">
+        SELECT
+            COUNT(*) as totalEvents,
+            COUNT(CASE WHEN status = 'FAILED' THEN 1 END) as failedEvents,
+            COUNT(CASE WHEN processing_time > 5000 THEN 1 END) as slowProcessingEvents,
+            ROUND(AVG(processing_time), 2) as avgProcessingTime,
+            ROUND(MAX(processing_time), 2) as maxProcessingTime,
+            COUNT(CASE WHEN triggered_execution_id IS NULL THEN 1 END) as notTriggeredEvents,
+            COUNT(CASE WHEN error_message LIKE '%timeout%' THEN 1 END) as timeoutEvents,
+            COUNT(CASE WHEN error_message LIKE '%signature%' THEN 1 END) as signatureErrors
+        FROM webhook_event
+        WHERE project_id = #{projectId}
+            <if test="timeRange == '1h'">
+                AND create_time >= DATE_SUB(NOW(), INTERVAL 1 HOUR)
+            </if>
+            <if test="timeRange == '24h'">
+                AND create_time >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+            </if>
+            <if test="timeRange == '7d'">
+                AND create_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+            </if>
+    </select>
+
+    <!-- 查询异常事件模式 -->
+    <select id="selectAbnormalEventPatterns" resultType="java.util.Map">
+        SELECT
+            '高频失败' as patternType,
+            repository_url as repositoryUrl,
+            event_type as eventType,
+            COUNT(*) as failureCount,
+            ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM webhook_event
+                                    WHERE project_id = #{projectId}
+                                      <if test="timeRange == '7d'">
+                                          AND create_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+                                      </if>
+                                      <if test="timeRange == '30d'">
+                                          AND create_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                                      </if>), 2) as failureRate
+        FROM webhook_event
+        WHERE project_id = #{projectId}
+          AND status = 'FAILED'
+            <if test="timeRange == '7d'">
+                AND create_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+            </if>
+            <if test="timeRange == '30d'">
+                AND create_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+            </if>
+        GROUP BY repository_url, event_type
+        HAVING COUNT(*) >= 5
+        ORDER BY failureCount DESC
+
+        UNION ALL
+
+        SELECT
+            '处理缓慢' as patternType,
+            repository_url as repositoryUrl,
+            event_type as eventType,
+            COUNT(*) as slowCount,
+            ROUND(AVG(processing_time), 2) as avgProcessingTime
+        FROM webhook_event
+        WHERE project_id = #{projectId}
+          AND processing_time > 10000
+            <if test="timeRange == '7d'">
+                AND create_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+            </if>
+            <if test="timeRange == '30d'">
+                AND create_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+            </if>
+        GROUP BY repository_url, event_type
+        ORDER BY avgProcessingTime DESC
+    </select>
+
+    <!-- 查询事件负载情况 -->
+    <select id="selectEventLoadStats" resultType="java.util.Map">
+        SELECT
+            DATE_FORMAT(create_time, '%Y-%m-%d %H:00:00') as hourBucket,
+            COUNT(*) as eventCount,
+            COUNT(CASE WHEN status = 'PROCESSING' THEN 1 END) as processingCount,
+            ROUND(AVG(processing_time), 2) as avgProcessingTime,
+            COUNT(CASE WHEN status = 'FAILED' THEN 1 END) as failedCount
+        FROM webhook_event
+        WHERE project_id = #{projectId}
+            <if test="timeRange == '24h'">
+                AND create_time >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+            </if>
+            <if test="timeRange == '7d'">
+                AND create_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+            </if>
+            <if test="timeRange == '30d'">
+                AND create_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+            </if>
+        GROUP BY hourBucket
+        ORDER BY hourBucket DESC
+    </select>
+
+    <!-- 查询事件处理能力 -->
+    <select id="selectEventProcessingCapacity" resultType="java.util.Map">
+        SELECT
+            COUNT(*) as totalCapacity,
+            ROUND(AVG(processing_time), 2) as avgProcessingTime,
+            ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY processing_time), 2) as p95ProcessingTime,
+            COUNT(CASE WHEN status = 'COMPLETED' THEN 1 END) as processedCount,
+            COUNT(CASE WHEN status = 'FAILED' THEN 1 END) as failedCount,
+            ROUND(COUNT(CASE WHEN status = 'COMPLETED' THEN 1 END) * 100.0 / COUNT(*), 2) as successRate
+        FROM webhook_event
+        WHERE project_id = #{projectId}
+          AND create_time >= DATE_SUB(NOW(), INTERVAL 1 HOUR)
+    </select>
+
+    <!-- 查询事件关联关系 -->
+    <select id="selectRelatedEvents" resultMap="WebhookEventResult">
+        <include refid="selectWebhookEventVo"/>
+        WHERE (repository_url = (SELECT repository_url FROM webhook_event WHERE event_id = #{eventId})
+               OR commit_sha = (SELECT commit_sha FROM webhook_event WHERE event_id = #{eventId}))
+          AND event_id != #{eventId}
+          AND create_time >= DATE_SUB((SELECT create_time FROM webhook_event WHERE event_id = #{eventId}), INTERVAL 1 HOUR)
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 查询根事件 -->
+    <select id="selectRootEvent" resultMap="WebhookEventResult">
+        WITH RECURSIVE event_tree AS (
+            SELECT event_id, retried_from, create_time
+            FROM webhook_event
+            WHERE event_id = #{eventId}
+
+            UNION ALL
+
+            SELECT we.event_id, we.retried_from, we.create_time
+            FROM webhook_event we
+            JOIN event_tree et ON we.event_id = et.retried_from
+        )
+        SELECT we.*
+        FROM webhook_event we
+        JOIN event_tree et ON we.event_id = et.event_id
+        WHERE we.retried_from IS NULL
+        LIMIT 1
+    </select>
+
+    <!-- 查询事件链 -->
+    <select id="selectEventChain" resultMap="WebhookEventResult">
+        WITH RECURSIVE event_chain AS (
+            SELECT event_id, retried_from, create_time
+            FROM webhook_event
+            WHERE event_id = #{rootEventId}
+
+            UNION ALL
+
+            SELECT we.event_id, we.retried_from, we.create_time
+            FROM webhook_event we
+            JOIN event_chain ec ON we.retried_from = ec.event_id
+        )
+        SELECT we.*
+        FROM webhook_event we
+        JOIN event_chain ec ON we.event_id = ec.event_id
+        ORDER BY we.create_time ASC
+    </select>
+
+    <sql id="selectWebhookEventVo">
+        SELECT event_id, event_type, event_source, repository_url, branch, commit_sha,
+               commit_message, author, tag, payload, headers, signature, status,
+               processing_time, error_message, triggered_execution_id, project_id,
+               create_time, update_time, create_by, update_by, remark
+        FROM webhook_event
+    </sql>
+
+</mapper>

@@ -1,0 +1,504 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.autotest.platform.mapper.PipelineExecutionMapper">
+
+    <resultMap type="PipelineExecution" id="PipelineExecutionResult">
+        <result property="executionId"     column="execution_id"     />
+        <result property="executionCode"   column="execution_code"   />
+        <result property="pipelineId"      column="pipeline_id"      />
+        <result property="projectId"       column="project_id"       />
+        <result property="status"          column="status"           />
+        <result property="triggerType"     column="trigger_type"     />
+        <result property="triggerUserId"   column="trigger_user_id"  />
+        <result property="executionParams" column="execution_params" />
+        <result property="stepResults"     column="step_results"     />
+        <result property="startTime"       column="start_time"       />
+        <result property="endTime"         column="end_time"         />
+        <result property="duration"        column="duration"         />
+        <result property="errorMessage"    column="error_message"    />
+        <result property="retriedFrom"     column="retried_from"     />
+        <result property="createTime"      column="create_time"      />
+        <result property="updateTime"      column="update_time"      />
+        <result property="createBy"        column="create_by"        />
+        <result property="updateBy"        column="update_by"        />
+        <result property="remark"          column="remark"           />
+    </resultMap>
+
+    <!-- 查询执行统计信息 -->
+    <select id="selectExecutionStatistics" resultType="java.util.Map">
+        SELECT
+            COUNT(*) as totalExecutions,
+            COUNT(CASE WHEN status = 'SUCCESS' THEN 1 END) as successExecutions,
+            COUNT(CASE WHEN status = 'FAILED' THEN 1 END) as failedExecutions,
+            COUNT(CASE WHEN status = 'RUNNING' THEN 1 END) as runningExecutions,
+            COUNT(CASE WHEN status = 'STOPPED' THEN 1 END) as stoppedExecutions,
+            COUNT(CASE WHEN status = 'PENDING' THEN 1 END) as pendingExecutions,
+            ROUND(AVG(CASE WHEN end_time IS NOT NULL
+                         THEN TIMESTAMPDIFF(SECOND, start_time, end_time)
+                         ELSE NULL END), 2) as avgDuration,
+            ROUND(MAX(CASE WHEN end_time IS NOT NULL
+                         THEN TIMESTAMPDIFF(SECOND, start_time, end_time)
+                         ELSE 0 END), 2) as maxDuration,
+            ROUND(MIN(CASE WHEN end_time IS NOT NULL
+                         THEN TIMESTAMPDIFF(SECOND, start_time, end_time)
+                         ELSE 0 END), 2) as minDuration,
+            CASE WHEN COUNT(*) > 0
+                 THEN ROUND(COUNT(CASE WHEN status = 'SUCCESS' THEN 1 END) * 100.0 / COUNT(*), 2)
+                 ELSE 0 END as successRate
+        FROM pipeline_execution
+        WHERE project_id = #{projectId}
+          AND create_time >= #{startTime}
+    </select>
+
+    <!-- 查询成功率趋势 -->
+    <select id="selectSuccessTrend" resultType="java.util.Map">
+        SELECT
+            DATE(create_time) as date,
+            COUNT(*) as totalExecutions,
+            COUNT(CASE WHEN status = 'SUCCESS' THEN 1 END) as successExecutions,
+            COUNT(CASE WHEN status = 'FAILED' THEN 1 END) as failedExecutions,
+            CASE WHEN COUNT(*) > 0
+                 THEN ROUND(COUNT(CASE WHEN status = 'SUCCESS' THEN 1 END) * 100.0 / COUNT(*), 2)
+                 ELSE 0 END as successRate
+        FROM pipeline_execution
+        WHERE project_id = #{projectId}
+          AND create_time >= #{startTime}
+          AND create_time <= #{endTime}
+        GROUP BY DATE(create_time)
+        ORDER BY date DESC
+    </select>
+
+    <!-- 查询流水线的执行记录 -->
+    <select id="selectExecutionsByPipeline" resultMap="PipelineExecutionResult">
+        <include refid="selectPipelineExecutionVo"/>
+        WHERE pipeline_id = #{pipelineId}
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        ORDER BY create_time DESC
+        <if test="limit != null and limit > 0">
+            LIMIT #{limit}
+        </if>
+    </select>
+
+    <!-- 查询正在运行的执行记录 -->
+    <select id="selectRunningExecutions" resultMap="PipelineExecutionResult">
+        <include refid="selectPipelineExecutionVo"/>
+        WHERE project_id = #{projectId}
+          AND status IN ('RUNNING', 'PENDING')
+        ORDER BY start_time ASC
+    </select>
+
+    <!-- 查询失败的执行记录 -->
+    <select id="selectFailedExecutions" resultMap="PipelineExecutionResult">
+        <include refid="selectPipelineExecutionVo"/>
+        WHERE project_id = #{projectId}
+          AND status = 'FAILED'
+          AND create_time >= DATE_SUB(NOW(), INTERVAL #{days} DAY)
+        ORDER BY create_time DESC
+        <if test="limit != null and limit > 0">
+            LIMIT #{limit}
+        </if>
+    </select>
+
+    <!-- 查询执行时间最长的记录 -->
+    <select id="selectLongestExecutions" resultMap="PipelineExecutionResult">
+        <include refid="selectPipelineExecutionVo"/>
+        WHERE project_id = #{projectId}
+          AND end_time IS NOT NULL
+        ORDER BY TIMESTAMPDIFF(SECOND, start_time, end_time) DESC
+        <if test="limit != null and limit > 0">
+            LIMIT #{limit}
+        </if>
+    </select>
+
+    <!-- 查询执行步骤详情 -->
+    <select id="selectExecutionStepDetails" resultType="java.util.Map">
+        SELECT
+            step_name as stepName,
+            step_type as stepType,
+            status,
+            start_time as startTime,
+            end_time as endTime,
+            TIMESTAMPDIFF(SECOND, start_time, end_time) as duration,
+            output,
+            error_message as errorMessage
+        FROM pipeline_execution_step
+        WHERE execution_id = #{executionId}
+        ORDER BY step_index
+    </select>
+
+    <!-- 查询执行日志 -->
+    <select id="selectExecutionLog" resultType="java.lang.String">
+        SELECT log_content
+        FROM pipeline_execution_log
+        WHERE execution_id = #{executionId}
+          <if test="stepName != null and stepName != ''">
+              AND step_name = #{stepName}
+          </if>
+        ORDER BY log_time ASC
+    </select>
+
+    <!-- 插入执行日志 -->
+    <insert id="insertExecutionLog">
+        INSERT INTO pipeline_execution_log (execution_id, step_name, log_content, log_time)
+        VALUES (#{executionId}, #{stepName}, #{logContent}, NOW())
+    </insert>
+
+    <!-- 更新执行状态 -->
+    <update id="updateExecutionStatus">
+        UPDATE pipeline_execution
+        SET status = #{status},
+            <if test="errorMessage != null and errorMessage != ''">
+                error_message = #{errorMessage},
+            </if>
+            <if test="status == 'SUCCESS' or status == 'FAILED' or status == 'STOPPED'">
+                end_time = NOW(),
+                duration = TIMESTAMPDIFF(SECOND, start_time, NOW()),
+            </if>
+            update_time = NOW()
+        WHERE execution_id = #{executionId}
+    </update>
+
+    <!-- 更新执行步骤状态 -->
+    <update id="updateStepStatus">
+        INSERT INTO pipeline_execution_step
+        (execution_id, step_name, step_type, status, output, error_message, start_time, end_time, step_index)
+        VALUES (#{executionId}, #{stepName},
+                (SELECT step_type FROM pipeline_execution_step WHERE execution_id = #{executionId} AND step_name = #{stepName} LIMIT 1),
+                #{status}, #{output}, #{errorMessage},
+                CASE WHEN #{status} = 'RUNNING' THEN NOW() ELSE start_time END,
+                CASE WHEN #{status} IN ('SUCCESS', 'FAILED') THEN NOW() ELSE end_time END,
+                COALESCE((SELECT MAX(step_index) FROM pipeline_execution_step WHERE execution_id = #{executionId}), 0) + 1)
+        ON DUPLICATE KEY UPDATE
+            status = #{status},
+            output = #{output},
+            error_message = #{errorMessage},
+            end_time = CASE WHEN #{status} IN ('SUCCESS', 'FAILED') THEN NOW() ELSE end_time END,
+            update_time = NOW()
+    </update>
+
+    <!-- 查询执行时长统计 -->
+    <select id="selectExecutionDurationStats" resultType="java.util.Map">
+        SELECT
+            p.pipeline_name as pipelineName,
+            COUNT(*) as executionCount,
+            ROUND(AVG(TIMESTAMPDIFF(SECOND, pe.start_time, pe.end_time)), 2) as avgDuration,
+            ROUND(MIN(TIMESTAMPDIFF(SECOND, pe.start_time, pe.end_time)), 2) as minDuration,
+            ROUND(MAX(TIMESTAMPDIFF(SECOND, pe.start_time, pe.end_time)), 2) as maxDuration,
+            ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY TIMESTAMPDIFF(SECOND, pe.start_time, pe.end_time)), 2) as medianDuration
+        FROM pipeline_execution pe
+        JOIN pipeline p ON pe.pipeline_id = p.pipeline_id
+        WHERE pe.project_id = #{projectId}
+          AND pe.end_time IS NOT NULL
+          <if test="timeRange == '7d'">
+              AND pe.create_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+          </if>
+          <if test="timeRange == '30d'">
+              AND pe.create_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+          </if>
+          <if test="timeRange == '90d'">
+              AND pe.create_time >= DATE_SUB(NOW(), INTERVAL 90 DAY)
+          </if>
+        GROUP BY p.pipeline_id, p.pipeline_name
+        ORDER BY avgDuration DESC
+    </select>
+
+    <!-- 查询步骤执行统计 -->
+    <select id="selectStepExecutionStats" resultType="java.util.Map">
+        SELECT
+            step_name as stepName,
+            step_type as stepType,
+            COUNT(*) as executionCount,
+            COUNT(CASE WHEN status = 'SUCCESS' THEN 1 END) as successCount,
+            COUNT(CASE WHEN status = 'FAILED' THEN 1 END) as failureCount,
+            ROUND(AVG(CASE WHEN end_time IS NOT NULL
+                         THEN TIMESTAMPDIFF(SECOND, start_time, end_time)
+                         ELSE NULL END), 2) as avgDuration
+        FROM pipeline_execution_step pes
+        JOIN pipeline_execution pe ON pes.execution_id = pe.execution_id
+        WHERE pe.project_id = #{projectId}
+          <if test="timeRange == '7d'">
+              AND pe.create_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+          </if>
+          <if test="timeRange == '30d'">
+              AND pe.create_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+          </if>
+          <if test="timeRange == '90d'">
+              AND pe.create_time >= DATE_SUB(NOW(), INTERVAL 90 DAY)
+          </if>
+        GROUP BY step_name, step_type
+        ORDER BY executionCount DESC
+    </select>
+
+    <!-- 查询执行失败原因统计 -->
+    <select id="selectFailureReasonStats" resultType="java.util.Map">
+        SELECT
+            SUBSTRING_INDEX(error_message, ':', 1) as failureReason,
+            COUNT(*) as failureCount,
+            ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM pipeline_execution
+                                    WHERE project_id = #{projectId}
+                                      AND status = 'FAILED'
+                                      <if test="timeRange == '7d'">
+                                          AND create_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+                                      </if>
+                                      <if test="timeRange == '30d'">
+                                          AND create_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                                      </if>
+                                      <if test="timeRange == '90d'">
+                                          AND create_time >= DATE_SUB(NOW(), INTERVAL 90 DAY)
+                                      </if>), 2) as percentage
+        FROM pipeline_execution
+        WHERE project_id = #{projectId}
+          AND status = 'FAILED'
+          AND error_message IS NOT NULL
+          <if test="timeRange == '7d'">
+              AND create_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+          </if>
+          <if test="timeRange == '30d'">
+              AND create_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+          </if>
+          <if test="timeRange == '90d'">
+              AND create_time >= DATE_SUB(NOW(), INTERVAL 90 DAY)
+          </if>
+        GROUP BY SUBSTRING_INDEX(error_message, ':', 1)
+        ORDER BY failureCount DESC
+        LIMIT 10
+    </select>
+
+    <!-- 查询每日执行统计 -->
+    <select id="selectDailyExecutionStats" resultType="java.util.Map">
+        SELECT
+            DATE(create_time) as date,
+            COUNT(*) as totalExecutions,
+            COUNT(CASE WHEN status = 'SUCCESS' THEN 1 END) as successExecutions,
+            COUNT(CASE WHEN status = 'FAILED' THEN 1 END) as failedExecutions,
+            COUNT(CASE WHEN status = 'RUNNING' THEN 1 END) as runningExecutions,
+            ROUND(AVG(CASE WHEN end_time IS NOT NULL
+                         THEN TIMESTAMPDIFF(SECOND, start_time, end_time)
+                         ELSE NULL END), 2) as avgDuration
+        FROM pipeline_execution
+        WHERE project_id = #{projectId}
+          AND create_time >= DATE_SUB(NOW(), INTERVAL #{days} DAY)
+        GROUP BY DATE(create_time)
+        ORDER BY date DESC
+    </select>
+
+    <!-- 查询执行队列 -->
+    <select id="selectExecutionQueue" resultMap="PipelineExecutionResult">
+        <include refid="selectPipelineExecutionVo"/>
+        WHERE project_id = #{projectId}
+          AND status = 'PENDING'
+        ORDER BY create_time ASC
+    </select>
+
+    <!-- 查询执行资源使用情况 -->
+    <select id="selectResourceUsage" resultType="java.util.Map">
+        SELECT
+            cpu_usage as cpuUsage,
+            memory_usage as memoryUsage,
+            disk_usage as diskUsage,
+            network_usage as networkUsage,
+            record_time as recordTime
+        FROM pipeline_execution_resource
+        WHERE execution_id = #{executionId}
+        ORDER BY record_time DESC
+    </select>
+
+    <!-- 插入资源使用记录 -->
+    <insert id="insertResourceUsage">
+        INSERT INTO pipeline_execution_resource
+        (execution_id, cpu_usage, memory_usage, disk_usage, network_usage, record_time)
+        VALUES (#{executionId},
+                #{resourceUsage.cpuUsage},
+                #{resourceUsage.memoryUsage},
+                #{resourceUsage.diskUsage},
+                #{resourceUsage.networkUsage},
+                NOW())
+    </insert>
+
+    <!-- 查询执行产物 -->
+    <select id="selectExecutionArtifacts" resultType="java.util.Map">
+        SELECT
+            artifact_id as artifactId,
+            artifact_name as artifactName,
+            artifact_type as artifactType,
+            artifact_path as artifactPath,
+            artifact_size as artifactSize,
+            create_time as createTime
+        FROM pipeline_execution_artifact
+        WHERE execution_id = #{executionId}
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 插入执行产物 -->
+    <insert id="insertExecutionArtifact">
+        INSERT INTO pipeline_execution_artifact
+        (execution_id, artifact_name, artifact_type, artifact_path, artifact_size, create_time)
+        VALUES (#{executionId},
+                #{artifact.artifactName},
+                #{artifact.artifactType},
+                #{artifact.artifactPath},
+                #{artifact.artifactSize},
+                NOW())
+    </insert>
+
+    <!-- 删除执行产物 -->
+    <delete id="deleteExecutionArtifact">
+        DELETE FROM pipeline_execution_artifact
+        WHERE execution_id = #{executionId}
+          AND artifact_id = #{artifactId}
+    </delete>
+
+    <!-- 查询重试记录 -->
+    <select id="selectRetryExecutions" resultMap="PipelineExecutionResult">
+        <include refid="selectPipelineExecutionVo"/>
+        WHERE retried_from = #{originalExecutionId}
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 查询执行链 -->
+    <select id="selectExecutionChain" resultMap="PipelineExecutionResult">
+        WITH RECURSIVE execution_chain AS (
+            SELECT execution_id, retried_from, create_time
+            FROM pipeline_execution
+            WHERE execution_id = #{rootExecutionId}
+
+            UNION ALL
+
+            SELECT pe.execution_id, pe.retried_from, pe.create_time
+            FROM pipeline_execution pe
+            JOIN execution_chain ec ON pe.retried_from = ec.execution_id
+        )
+        SELECT pe.*
+        FROM pipeline_execution pe
+        JOIN execution_chain ec ON pe.execution_id = ec.execution_id
+        ORDER BY pe.create_time ASC
+    </select>
+
+    <!-- 查询并发执行统计 -->
+    <select id="selectConcurrentExecutionStats" resultType="java.util.Map">
+        SELECT
+            MAX(concurrent_count) as maxConcurrent,
+            AVG(concurrent_count) as avgConcurrent,
+            COUNT(DISTINCT DATE(hour_bucket)) as activeDays
+        FROM (
+            SELECT
+                DATE_FORMAT(create_time, '%Y-%m-%d %H:00:00') as hour_bucket,
+                COUNT(*) as concurrent_count
+            FROM pipeline_execution
+            WHERE project_id = #{projectId}
+              AND status IN ('RUNNING', 'PENDING')
+              <if test="timeRange == '7d'">
+                  AND create_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+              </if>
+              <if test="timeRange == '30d'">
+                  AND create_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+              </if>
+              <if test="timeRange == '90d'">
+                  AND create_time >= DATE_SUB(NOW(), INTERVAL 90 DAY)
+              </if>
+            GROUP BY hour_bucket
+        ) concurrent_stats
+    </select>
+
+    <!-- 查询执行性能指标 -->
+    <select id="selectExecutionPerformanceMetrics" resultType="java.util.Map">
+        SELECT
+            DATE(create_time) as date,
+            COUNT(*) as totalExecutions,
+            ROUND(AVG(CASE WHEN end_time IS NOT NULL
+                         THEN TIMESTAMPDIFF(SECOND, start_time, end_time)
+                         ELSE NULL END), 2) as avgDuration,
+            ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY
+                CASE WHEN end_time IS NOT NULL
+                     THEN TIMESTAMPDIFF(SECOND, start_time, end_time)
+                     ELSE NULL END), 2) as p95Duration,
+            COUNT(CASE WHEN TIMESTAMPDIFF(SECOND, start_time, end_time) > 3600 THEN 1 END) as longRunningCount
+        FROM pipeline_execution
+        WHERE project_id = #{projectId}
+          <if test="timeRange == '7d'">
+              AND create_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+          </if>
+          <if test="timeRange == '30d'">
+              AND create_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+          </if>
+          <if test="timeRange == '90d'">
+              AND create_time >= DATE_SUB(NOW(), INTERVAL 90 DAY)
+          </if>
+        GROUP BY DATE(create_time)
+        ORDER BY date DESC
+    </select>
+
+    <!-- 清理过期执行记录 -->
+    <delete id="cleanExpiredExecutions">
+        DELETE FROM pipeline_execution
+        WHERE project_id = #{projectId}
+          AND create_time < #{cutoffTime}
+          AND status IN ('SUCCESS', 'FAILED', 'STOPPED')
+    </delete>
+
+    <!-- 清理执行日志 -->
+    <delete id="cleanExecutionLogs">
+        DELETE FROM pipeline_execution_log
+        WHERE execution_id = #{executionId}
+    </delete>
+
+    <!-- 归档执行记录 -->
+    <update id="archiveExecution">
+        UPDATE pipeline_execution
+        SET status = 'ARCHIVED',
+            update_time = NOW()
+        WHERE execution_id = #{executionId}
+    </update>
+
+    <!-- 查询归档的执行记录 -->
+    <select id="selectArchivedExecutions" resultMap="PipelineExecutionResult">
+        <include refid="selectPipelineExecutionVo"/>
+        WHERE project_id = #{projectId}
+          AND status = 'ARCHIVED'
+        ORDER BY create_time DESC
+        <if test="limit != null and limit > 0">
+            LIMIT #{limit}
+        </if>
+    </select>
+
+    <!-- 恢复归档的执行记录 -->
+    <update id="restoreArchivedExecution">
+        UPDATE pipeline_execution
+        SET status = 'COMPLETED',
+            update_time = NOW()
+        WHERE execution_id = #{executionId}
+          AND status = 'ARCHIVED'
+    </update>
+
+    <!-- 查询执行环境变量 -->
+    <select id="selectExecutionEnvironment" resultType="java.util.Map">
+        SELECT env_key as key, env_value as value
+        FROM pipeline_execution_env
+        WHERE execution_id = #{executionId}
+    </select>
+
+    <!-- 设置执行环境变量 -->
+    <insert id="setExecutionEnvironment">
+        INSERT INTO pipeline_execution_env (execution_id, env_key, env_value)
+        VALUES
+        <foreach collection="envVars" index="key" item="value" separator=",">
+            (#{executionId}, #{key}, #{value})
+        </foreach>
+        ON DUPLICATE KEY UPDATE
+            env_value = VALUES(env_value),
+            update_time = NOW()
+    </insert>
+
+    <sql id="selectPipelineExecutionVo">
+        SELECT execution_id, execution_code, pipeline_id, project_id, status,
+               trigger_type, trigger_user_id, execution_params, step_results,
+               start_time, end_time, duration, error_message, retried_from,
+               create_time, update_time, create_by, update_by, remark
+        FROM pipeline_execution
+    </sql>
+
+</mapper>
