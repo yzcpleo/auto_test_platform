@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.autotest.platform.mapper.TestExecutionCaseMapper">
+
+    <resultMap type="TestExecutionCase" id="TestExecutionCaseResult">
+        <result property="executionCaseId"    column="execution_case_id"    />
+        <result property="executionId"        column="execution_id"         />
+        <result property="caseId"             column="case_id"              />
+        <result property="caseCode"           column="case_code"            />
+        <result property="caseTitle"          column="case_title"           />
+        <result property="caseType"           column="case_type"            />
+        <result property="status"             column="status"               />
+        <result property="priority"           column="priority"             />
+        <result property="startTime"          column="start_time"           />
+        <result property="endTime"            column="end_time"             />
+        <result property="duration"           column="duration"             />
+        <result property="result"             column="result"               />
+        <result property="errorMessage"       column="error_message"        />
+        <result property="stepResults"        column="step_results"         />
+        <result property="assertionResults"   column="assertion_results"    />
+        <result property="screenshotPath"     column="screenshot_path"      />
+        <result property="logPath"            column="log_path"             />
+        <result property="retryCount"         column="retry_count"          />
+        <result property="executorNode"       column="executor_node"        />
+        <result property="threadId"           column="thread_id"            />
+        <result property="createBy"           column="create_by"            />
+        <result property="createTime"         column="create_time"          />
+        <result property="updateBy"           column="update_by"            />
+        <result property="updateTime"         column="update_time"          />
+    </resultMap>
+
+    <sql id="selectTestExecutionCaseVo">
+        select ec.execution_case_id, ec.execution_id, ec.case_id, ec.status, ec.priority,
+               ec.start_time, ec.end_time, ec.duration, ec.result, ec.error_message, ec.step_results,
+               ec.assertion_results, ec.screenshot_path, ec.log_path, ec.retry_count, ec.executor_node,
+               ec.thread_id, ec.create_by, ec.create_time, ec.update_by, ec.update_time,
+               tc.case_code, tc.case_title, tc.case_type
+        from test_execution_case ec
+        left join test_case tc on ec.case_id = tc.case_id
+    </sql>
+
+    <select id="selectTestExecutionCaseList" parameterType="TestExecutionCase" resultMap="TestExecutionCaseResult">
+        <include refid="selectTestExecutionCaseVo"/>
+        <where>
+            <if test="executionId != null">
+                AND ec.execution_id = #{executionId}
+            </if>
+            <if test="caseId != null">
+                AND ec.case_id = #{caseId}
+            </if>
+            <if test="status != null and status != ''">
+                AND ec.status = #{status}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                AND date_format(ec.create_time,'%y%m%d') &gt;= date_format(#{params.beginTime},'%y%m%d')
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                AND date_format(ec.create_time,'%y%m%d') &lt;= date_format(#{params.endTime},'%y%m%d')
+            </if>
+        </where>
+        order by ec.create_time desc
+    </select>
+
+    <select id="selectTestExecutionCaseByExecutionCaseId" parameterType="Long" resultMap="TestExecutionCaseResult">
+        <include refid="selectTestExecutionCaseVo"/>
+        where ec.execution_case_id = #{executionCaseId}
+    </select>
+
+    <select id="selectByExecutionId" parameterType="Long" resultMap="TestExecutionCaseResult">
+        <include refid="selectTestExecutionCaseVo"/>
+        where ec.execution_id = #{executionId}
+        order by tc.case_code asc
+    </select>
+
+    <select id="selectByCaseId" resultMap="TestExecutionCaseResult">
+        <include refid="selectTestExecutionCaseVo"/>
+        where ec.case_id = #{caseId}
+        <if test="limit != null and limit > 0">
+            limit #{limit}
+        </if>
+        order by ec.create_time desc
+    </select>
+
+    <select id="statisticsCaseStatus" parameterType="Long" resultType="map">
+        select
+            ec.status,
+            count(*) as count,
+            sum(ec.duration) as total_duration,
+            avg(ec.duration) as avg_duration
+        from test_execution_case ec
+        where ec.execution_id = #{executionId}
+        group by ec.status
+    </select>
+
+    <select id="selectFailedCases" parameterType="Long" resultMap="TestExecutionCaseResult">
+        <include refid="selectTestExecutionCaseVo"/>
+        where ec.execution_id = #{executionId}
+        and ec.status = 'FAILED'
+        order by ec.create_time desc
+    </select>
+
+    <insert id="insertTestExecutionCase" parameterType="TestExecutionCase" useGeneratedKeys="true" keyProperty="executionCaseId">
+        insert into test_execution_case
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="executionId != null">execution_id,</if>
+            <if test="caseId != null">case_id,</if>
+            <if test="status != null and status != ''">status,</if>
+            <if test="startTime != null">start_time,</if>
+            <if test="endTime != null">end_time,</if>
+            <if test="duration != null">duration,</if>
+            <if test="result != null">result,</if>
+            <if test="errorMessage != null">error_message,</if>
+            <if test="stepResults != null">step_results,</if>
+            <if test="assertionResults != null">assertion_results,</if>
+            <if test="screenshotPath != null">screenshot_path,</if>
+            <if test="logPath != null">log_path,</if>
+            <if test="retryCount != null">retry_count,</if>
+            <if test="executorNode != null">executor_node,</if>
+            <if test="threadId != null">thread_id,</if>
+            <if test="createBy != null">create_by,</if>
+            <if test="createTime != null">create_time,</if>
+            <if test="updateBy != null">update_by,</if>
+            <if test="updateTime != null">update_time,</if>
+         </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="executionId != null">#{executionId},</if>
+            <if test="caseId != null">#{caseId},</if>
+            <if test="status != null and status != ''">#{status},</if>
+            <if test="startTime != null">#{startTime},</if>
+            <if test="endTime != null">#{endTime},</if>
+            <if test="duration != null">#{duration},</if>
+            <if test="result != null">#{result},</if>
+            <if test="errorMessage != null">#{errorMessage},</if>
+            <if test="stepResults != null">#{stepResults},</if>
+            <if test="assertionResults != null">#{assertionResults},</if>
+            <if test="screenshotPath != null">#{screenshotPath},</if>
+            <if test="logPath != null">#{logPath},</if>
+            <if test="retryCount != null">#{retryCount},</if>
+            <if test="executorNode != null">#{executorNode},</if>
+            <if test="threadId != null">#{threadId},</if>
+            <if test="createBy != null">#{createBy},</if>
+            <if test="createTime != null">#{createTime},</if>
+            <if test="updateBy != null">#{updateBy},</if>
+            <if test="updateTime != null">#{updateTime},</if>
+         </trim>
+    </insert>
+
+    <insert id="batchInsertExecutionCase">
+        insert into test_execution_case (execution_id, case_id, status, create_by, create_time)
+        values
+        <foreach collection="list" item="item" separator=",">
+            (#{item.executionId}, #{item.caseId}, #{item.status}, #{item.createBy}, #{item.createTime})
+        </foreach>
+    </insert>
+
+    <update id="updateTestExecutionCase" parameterType="TestExecutionCase">
+        update test_execution_case
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="executionId != null">execution_id = #{executionId},</if>
+            <if test="caseId != null">case_id = #{caseId},</if>
+            <if test="status != null and status != ''">status = #{status},</if>
+            <if test="startTime != null">start_time = #{startTime},</if>
+            <if test="endTime != null">end_time = #{endTime},</if>
+            <if test="duration != null">duration = #{duration},</if>
+            <if test="result != null">result = #{result},</if>
+            <if test="errorMessage != null">error_message = #{errorMessage},</if>
+            <if test="stepResults != null">step_results = #{stepResults},</if>
+            <if test="assertionResults != null">assertion_results = #{assertionResults},</if>
+            <if test="screenshotPath != null">screenshot_path = #{screenshotPath},</if>
+            <if test="logPath != null">log_path = #{logPath},</if>
+            <if test="retryCount != null">retry_count = #{retryCount},</if>
+            <if test="executorNode != null">executor_node = #{executorNode},</if>
+            <if test="threadId != null">thread_id = #{threadId},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+        </trim>
+        where execution_case_id = #{executionCaseId}
+    </update>
+
+    <update id="updateCaseStatus">
+        update test_execution_case
+        set status = #{status},
+            result = #{result},
+            error_message = #{errorMessage},
+            update_time = now()
+        where execution_case_id = #{executionCaseId}
+    </update>
+
+    <delete id="deleteTestExecutionCaseByExecutionCaseId" parameterType="Long">
+        delete from test_execution_case where execution_case_id = #{executionCaseId}
+    </delete>
+
+    <delete id="deleteTestExecutionCaseByExecutionCaseIds" parameterType="String">
+        delete from test_execution_case where execution_case_id in
+        <foreach item="executionCaseId" collection="array" open="(" separator="," close=")">
+            #{executionCaseId}
+        </foreach>
+    </delete>
+
+    <delete id="deleteByExecutionId" parameterType="Long">
+        delete from test_execution_case where execution_id = #{executionId}
+    </delete>
+
+</mapper>

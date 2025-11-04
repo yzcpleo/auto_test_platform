@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.autotest.platform.mapper.TestProjectMapper">
+
+    <resultMap type="TestProject" id="TestProjectResult">
+        <result property="projectId"         column="project_id"         />
+        <result property="projectCode"       column="project_code"       />
+        <result property="projectName"       column="project_name"       />
+        <result property="description"       column="description"        />
+        <result property="status"            column="status"             />
+        <result property="gitRepoUrl"        column="git_repo_url"       />
+        <result property="gitBranch"         column="git_branch"         />
+        <result property="gitAccessToken"    column="git_access_token"   />
+        <result property="ownerId"           column="owner_id"            />
+        <result property="ownerName"         column="owner_name"          />
+        <result property="memberCount"       column="member_count"       />
+        <result property="caseCount"         column="case_count"          />
+        <result property="lastExecutionTime" column="last_execution_time"/>
+        <result property="lastExecutionStatus" column="last_execution_status"/>
+        <result property="delFlag"           column="del_flag"           />
+        <result property="createBy"          column="create_by"          />
+        <result property="createTime"        column="create_time"        />
+        <result property="updateBy"          column="update_by"          />
+        <result property="updateTime"        column="update_time"        />
+        <result property="remark"            column="remark"             />
+    </resultMap>
+
+    <sql id="selectTestProjectVo">
+        select p.project_id, p.project_code, p.project_name, p.description, p.status,
+               p.git_repo_url, p.git_branch, p.git_access_token, p.owner_id,
+               u.nick_name as owner_name, p.del_flag, p.create_by, p.create_time,
+               p.update_by, p.update_time, p.remark,
+               (select count(*) from test_project_member m where m.project_id = p.project_id) as member_count,
+               (select count(*) from test_case c where c.project_id = p.project_id and c.del_flag = '0') as case_count,
+               (select max(e.create_time) from test_execution e where e.project_id = p.project_id) as last_execution_time,
+               (select e.execution_status from test_execution e where e.project_id = p.project_id order by e.create_time desc limit 1) as last_execution_status
+        from test_project p
+        left join sys_user u on p.owner_id = u.user_id
+    </sql>
+
+    <select id="selectTestProjectList" parameterType="TestProject" resultMap="TestProjectResult">
+        <include refid="selectTestProjectVo"/>
+        <where>
+            p.del_flag = '0'
+            <if test="projectName != null and projectName != ''">
+                AND p.project_name like concat('%', #{projectName}, '%')
+            </if>
+            <if test="status != null and status != ''">
+                AND p.status = #{status}
+            </if>
+            <if test="ownerId != null">
+                AND p.owner_id = #{ownerId}
+            </if>
+            <!-- 数据权限过滤 -->
+            ${params.dataScope}
+        </where>
+        order by p.create_time desc
+    </select>
+
+    <select id="selectTestProjectByProjectId" parameterType="Long" resultMap="TestProjectResult">
+        <include refid="selectTestProjectVo"/>
+        where p.project_id = #{projectId} and p.del_flag = '0'
+    </select>
+
+    <select id="selectProjectsByUserId" parameterType="Long" resultMap="TestProjectResult">
+        <include refid="selectTestProjectVo"/>
+        where (p.owner_id = #{userId}
+               or exists (select 1 from test_project_member m where m.project_id = p.project_id and m.user_id = #{userId}))
+        and p.del_flag = '0'
+        order by p.create_time desc
+    </select>
+
+    <select id="checkProjectNameExists" resultType="int">
+        select count(1) from test_project
+        where project_name = #{projectName} and del_flag = '0'
+        and owner_id = #{userId}
+    </select>
+
+    <select id="getProjectStatistics" parameterType="Long" resultMap="TestProjectResult">
+        <include refid="selectTestProjectVo"/>
+        where p.project_id = #{projectId}
+    </select>
+
+    <insert id="insertTestProject" parameterType="TestProject" useGeneratedKeys="true" keyProperty="projectId">
+        insert into test_project
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="projectCode != null and projectCode != ''">project_code,</if>
+            <if test="projectName != null and projectName != ''">project_name,</if>
+            <if test="description != null">description,</if>
+            <if test="status != null and status != ''">status,</if>
+            <if test="gitRepoUrl != null">git_repo_url,</if>
+            <if test="gitBranch != null and gitBranch != ''">git_branch,</if>
+            <if test="gitAccessToken != null">git_access_token,</if>
+            <if test="ownerId != null">owner_id,</if>
+            <if test="delFlag != null">del_flag,</if>
+            <if test="createBy != null and createBy != ''">create_by,</if>
+            <if test="createTime != null">create_time,</if>
+            <if test="updateBy != null and updateBy != ''">update_by,</if>
+            <if test="updateTime != null">update_time,</if>
+            <if test="remark != null">remark,</if>
+         </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="projectCode != null and projectCode != ''">#{projectCode},</if>
+            <if test="projectName != null and projectName != ''">#{projectName},</if>
+            <if test="description != null">#{description},</if>
+            <if test="status != null and status != ''">#{status},</if>
+            <if test="gitRepoUrl != null">#{gitRepoUrl},</if>
+            <if test="gitBranch != null and gitBranch != ''">#{gitBranch},</if>
+            <if test="gitAccessToken != null">#{gitAccessToken},</if>
+            <if test="ownerId != null">#{ownerId},</if>
+            <if test="delFlag != null">#{delFlag},</if>
+            <if test="createBy != null and createBy != ''">#{createBy},</if>
+            <if test="createTime != null">#{createTime},</if>
+            <if test="updateBy != null and updateBy != ''">#{updateBy},</if>
+            <if test="updateTime != null">#{updateTime},</if>
+            <if test="remark != null">#{remark},</if>
+         </trim>
+    </insert>
+
+    <update id="updateTestProject" parameterType="TestProject">
+        update test_project
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="projectCode != null and projectCode != ''">project_code = #{projectCode},</if>
+            <if test="projectName != null and projectName != ''">project_name = #{projectName},</if>
+            <if test="description != null">description = #{description},</if>
+            <if test="status != null and status != ''">status = #{status},</if>
+            <if test="gitRepoUrl != null">git_repo_url = #{gitRepoUrl},</if>
+            <if test="gitBranch != null and gitBranch != ''">git_branch = #{gitBranch},</if>
+            <if test="gitAccessToken != null">git_access_token = #{gitAccessToken},</if>
+            <if test="ownerId != null">owner_id = #{ownerId},</if>
+            <if test="delFlag != null">del_flag = #{delFlag},</if>
+            <if test="createBy != null and createBy != ''">create_by = #{createBy},</if>
+            <if test="createTime != null">create_time = #{createTime},</if>
+            <if test="updateBy != null and updateBy != ''">update_by = #{updateBy},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+            <if test="remark != null">remark = #{remark},</if>
+        </trim>
+        where project_id = #{projectId}
+    </update>
+
+    <delete id="deleteTestProjectByProjectId" parameterType="Long">
+        update test_project set del_flag = '2' where project_id = #{projectId}
+    </delete>
+
+    <delete id="deleteTestProjectByProjectIds" parameterType="String">
+        update test_project set del_flag = '2' where project_id in
+        <foreach item="projectId" collection="array" open="(" separator="," close=")">
+            #{projectId}
+        </foreach>
+    </delete>
+
+</mapper>

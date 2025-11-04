@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.autotest.platform.mapper.TestCaseVersionMapper">
+
+    <resultMap type="TestCaseVersion" id="TestCaseVersionResult">
+        <result property="versionId"         column="version_id"         />
+        <result property="caseId"             column="case_id"             />
+        <result property="versionNumber"      column="version_number"      />
+        <result property="caseTitle"          column="case_title"          />
+        <result property="testSteps"          column="test_steps"          />
+        <result property="expectedResult"     column="expected_result"     />
+        <result property="changeLog"          column="change_log"          />
+        <result property="createTime"         column="create_time"         />
+        <result property="authorName"         column="author_name"         />
+    </resultMap>
+
+    <sql id="selectTestCaseVersionVo">
+        select v.version_id, v.case_id, v.version_number, v.case_title, v.test_steps,
+               v.expected_result, v.change_log, v.create_time, u.nick_name as author_name
+        from test_case_version v
+        left join sys_user u on v.create_by = u.user_name
+    </sql>
+
+    <select id="selectTestCaseVersionList" parameterType="TestCaseVersion" resultMap="TestCaseVersionResult">
+        <include refid="selectTestCaseVersionVo"/>
+        <where>
+            <if test="caseId != null">
+                AND v.case_id = #{caseId}
+            </if>
+            <if test="caseTitle != null and caseTitle != ''">
+                AND v.case_title like concat('%', #{caseTitle}, '%')
+            </if>
+            <if test="versionNumber != null">
+                AND v.version_number = #{versionNumber}
+            </if>
+        </where>
+        order by v.version_number desc
+    </select>
+
+    <select id="selectTestCaseVersionByVersionId" parameterType="Long" resultMap="TestCaseVersionResult">
+        <include refid="selectTestCaseVersionVo"/>
+        where v.version_id = #{versionId}
+    </select>
+
+    <select id="selectVersionsByCaseId" parameterType="Long" resultMap="TestCaseVersionResult">
+        <include refid="selectTestCaseVersionVo"/>
+        where v.case_id = #{caseId}
+        order by v.version_number desc
+    </select>
+
+    <select id="selectLatestVersionByCaseId" parameterType="Long" resultMap="TestCaseVersionResult">
+        <include refid="selectTestCaseVersionVo"/>
+        where v.case_id = #{caseId}
+        order by v.version_number desc
+        limit 1
+    </select>
+
+    <insert id="insertTestCaseVersion" parameterType="TestCaseVersion" useGeneratedKeys="true" keyProperty="versionId">
+        insert into test_case_version
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="caseId != null">case_id,</if>
+            <if test="versionNumber != null">version_number,</if>
+            <if test="caseTitle != null and caseTitle != ''">case_title,</if>
+            <if test="testSteps != null">test_steps,</if>
+            <if test="expectedResult != null">expected_result,</if>
+            <if test="changeLog != null">change_log,</if>
+            <if test="createBy != null">create_by,</if>
+            <if test="createTime != null">create_time,</if>
+         </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="caseId != null">#{caseId},</if>
+            <if test="versionNumber != null">#{versionNumber},</if>
+            <if test="caseTitle != null and caseTitle != ''">#{caseTitle},</if>
+            <if test="testSteps != null">#{testSteps},</if>
+            <if test="expectedResult != null">#{expectedResult},</if>
+            <if test="changeLog != null">#{changeLog},</if>
+            <if test="createBy != null">#{createBy},</if>
+            <if test="createTime != null">#{createTime},</if>
+         </trim>
+    </insert>
+
+    <update id="updateTestCaseVersion" parameterType="TestCaseVersion">
+        update test_case_version
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="caseId != null">case_id = #{caseId},</if>
+            <if test="versionNumber != null">version_number = #{versionNumber},</if>
+            <if test="caseTitle != null and caseTitle != ''">case_title = #{caseTitle},</if>
+            <if test="testSteps != null">test_steps = #{testSteps},</if>
+            <if test="expectedResult != null">expected_result = #{expectedResult},</if>
+            <if test="changeLog != null">change_log = #{changeLog},</if>
+            <if test="createBy != null">create_by = #{createBy},</if>
+            <if test="createTime != null">create_time = #{createTime},</if>
+        </trim>
+        where version_id = #{versionId}
+    </update>
+
+    <delete id="deleteTestCaseVersionByVersionId" parameterType="Long">
+        delete from test_case_version where version_id = #{versionId}
+    </delete>
+
+    <delete id="deleteTestCaseVersionByVersionIds" parameterType="String">
+        delete from test_case_version where version_id in
+        <foreach item="versionId" collection="array" open="(" separator="," close=")">
+            #{versionId}
+        </foreach>
+    </delete>
+
+    <delete id="deleteVersionsByCaseId" parameterType="Long">
+        delete from test_case_version where case_id = #{caseId}
+    </delete>
+
+    <delete id="cleanOldVersions">
+        delete from test_case_version
+        where case_id = #{caseId}
+        and version_id not in (
+            select version_id from (
+                select version_id from test_case_version
+                where case_id = #{caseId}
+                order by version_number desc
+                limit #{keepCount}
+            ) as latest
+        )
+    </delete>
+
+</mapper>

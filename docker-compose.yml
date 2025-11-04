@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  # MySQL数据库
+  mysql:
+    image: mysql:8.0
+    container_name: autotest-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root123456
+      MYSQL_DATABASE: autotest_platform
+      MYSQL_USER: autotest
+      MYSQL_PASSWORD: autotest123
+      TZ: Asia/Shanghai
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d
+    command:
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_general_ci
+      --explicit_defaults_for_timestamp=true
+      --lower_case_table_names=1
+    networks:
+      - autotest-network
+
+  # Redis缓存
+  redis:
+    image: redis:6.2-alpine
+    container_name: autotest-redis
+    restart: always
+    environment:
+      TZ: Asia/Shanghai
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - autotest-network
+
+  # MinIO对象存储 (用于测试报告和截图)
+  minio:
+    image: minio/minio:latest
+    container_name: autotest-minio
+    restart: always
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: admin123456
+      TZ: Asia/Shanghai
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    networks:
+      - autotest-network
+
+volumes:
+  mysql_data:
+  redis_data:
+  minio_data:
+
+networks:
+  autotest-network:
+    driver: bridge

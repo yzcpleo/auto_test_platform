@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.autotest.platform.mapper.TestCaseMapper">
+
+    <resultMap type="TestCase" id="TestCaseResult">
+        <result property="caseId"            column="case_id"            />
+        <result property="projectId"         column="project_id"         />
+        <result property="categoryId"        column="category_id"        />
+        <result property="categoryName"      column="category_name"      />
+        <result property="caseTitle"         column="case_title"         />
+        <result property="caseCode"          column="case_code"          />
+        <result property="caseType"          column="case_type"          />
+        <result property="priority"          column="priority"           />
+        <result property="preconditions"     column="preconditions"     />
+        <result property="testSteps"         column="test_steps"         />
+        <result property="expectedResult"    column="expected_result"    />
+        <result property="testDataSource"    column="test_data_source"   />
+        <result property="tags"              column="tags"               />
+        <result property="status"            column="status"             />
+        <result property="version"           column="version"            />
+        <result property="authorId"          column="author_id"          />
+        <result property="authorName"        column="author_name"        />
+        <result property="reviewerId"        column="reviewer_id"        />
+        <result property="reviewerName"      column="reviewer_name"      />
+        <result property="reviewTime"        column="review_time"        />
+        <result property="delFlag"           column="del_flag"           />
+        <result property="createBy"          column="create_by"          />
+        <result property="createTime"        column="create_time"        />
+        <result property="updateBy"          column="update_by"          />
+        <result property="updateTime"        column="update_time"        />
+        <result property="remark"            column="remark"             />
+        <result property="lastExecutionResult" column="last_execution_result" />
+        <result property="lastExecutionTime" column="last_execution_time" />
+    </resultMap>
+
+    <sql id="selectTestCaseVo">
+        select t.case_id, t.project_id, t.category_id, t.case_title, t.case_code, t.case_type,
+               t.priority, t.preconditions, t.test_steps, t.expected_result, t.test_data_source,
+               t.tags, t.status, t.version, t.author_id, t.reviewer_id, t.review_time,
+               t.del_flag, t.create_by, t.create_time, t.update_by, t.update_time, t.remark,
+               c.category_name,
+               u.nick_name as author_name,
+               r.nick_name as reviewer_name,
+               (select ec.execution_status from test_execution_case ec
+                where ec.case_id = t.case_id
+                order by ec.create_time desc limit 1) as last_execution_result,
+               (select ec.create_time from test_execution_case ec
+                where ec.case_id = t.case_id
+                order by ec.create_time desc limit 1) as last_execution_time
+        from test_case t
+        left join test_case_category c on t.category_id = c.category_id
+        left join sys_user u on t.author_id = u.user_id
+        left join sys_user r on t.reviewer_id = r.user_id
+    </sql>
+
+    <select id="selectTestCaseList" parameterType="TestCase" resultMap="TestCaseResult">
+        <include refid="selectTestCaseVo"/>
+        <where>
+            t.del_flag = '0'
+            <if test="projectId != null">
+                AND t.project_id = #{projectId}
+            </if>
+            <if test="categoryId != null">
+                AND t.category_id = #{categoryId}
+            </if>
+            <if test="caseTitle != null and caseTitle != ''">
+                AND t.case_title like concat('%', #{caseTitle}, '%')
+            </if>
+            <if test="caseCode != null and caseCode != ''">
+                AND t.case_code like concat('%', #{caseCode}, '%')
+            </if>
+            <if test="caseType != null and caseType != ''">
+                AND t.case_type = #{caseType}
+            </if>
+            <if test="priority != null and priority != ''">
+                AND t.priority = #{priority}
+            </if>
+            <if test="status != null and status != ''">
+                AND t.status = #{status}
+            </if>
+            <if test="authorId != null">
+                AND t.author_id = #{authorId}
+            </if>
+            <if test="tags != null and tags != ''">
+                AND t.tags like concat('%', #{tags}, '%')
+            </if>
+        </where>
+        order by t.create_time desc
+    </select>
+
+    <select id="selectTestCaseByCaseId" parameterType="Long" resultMap="TestCaseResult">
+        <include refid="selectTestCaseVo"/>
+        where t.case_id = #{caseId} and t.del_flag = '0'
+    </select>
+
+    <select id="selectCasesByCategoryId" parameterType="Long" resultMap="TestCaseResult">
+        <include refid="selectTestCaseVo"/>
+        where t.category_id = #{categoryId} and t.del_flag = '0'
+        order by t.case_code
+    </select>
+
+    <select id="selectCasesByProjectId" parameterType="Long" resultMap="TestCaseResult">
+        <include refid="selectTestCaseVo"/>
+        where t.project_id = #{projectId} and t.del_flag = '0'
+        order by t.case_code
+    </select>
+
+    <select id="checkCaseCodeExists" resultType="int">
+        select count(1) from test_case
+        where case_code = #{caseCode} and project_id = #{projectId} and del_flag = '0'
+    </select>
+
+    <select id="generateCaseCode" resultType="string">
+        select concat(
+            (select project_code from test_project where project_id = #{projectId}),
+            '-CASE',
+            (select coalesce(max(cast(substr(case_code, length(case_code) - 2, 3) as signed)), 0)
+             from test_case
+             where project_id = #{projectId}
+             and category_id = #{categoryId}
+             and case_code regexp concat('[A-Z0-9]+-CASE[0-9]{3}')),
+            LPAD(1, 3, '0')
+        )
+    </select>
+
+    <insert id="insertTestCase" parameterType="TestCase" useGeneratedKeys="true" keyProperty="caseId">
+        insert into test_case
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="projectId != null">project_id,</if>
+            <if test="categoryId != null">category_id,</if>
+            <if test="caseTitle != null and caseTitle != ''">case_title,</if>
+            <if test="caseCode != null and caseCode != ''">case_code,</if>
+            <if test="caseType != null and caseType != ''">case_type,</if>
+            <if test="priority != null and priority != ''">priority,</if>
+            <if test="preconditions != null">preconditions,</if>
+            <if test="testSteps != null">test_steps,</if>
+            <if test="expectedResult != null">expected_result,</if>
+            <if test="testDataSource != null">test_data_source,</if>
+            <if test="tags != null">tags,</if>
+            <if test="status != null and status != ''">status,</if>
+            <if test="version != null">version,</if>
+            <if test="authorId != null">author_id,</if>
+            <if test="reviewerId != null">reviewer_id,</if>
+            <if test="reviewTime != null">review_time,</if>
+            <if test="delFlag != null">del_flag,</if>
+            <if test="createBy != null">create_by,</if>
+            <if test="createTime != null">create_time,</if>
+            <if test="updateBy != null">update_by,</if>
+            <if test="updateTime != null">update_time,</if>
+            <if test="remark != null">remark,</if>
+         </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="projectId != null">#{projectId},</if>
+            <if test="categoryId != null">#{categoryId},</if>
+            <if test="caseTitle != null and caseTitle != ''">#{caseTitle},</if>
+            <if test="caseCode != null and caseCode != ''">#{caseCode},</if>
+            <if test="caseType != null and caseType != ''">#{caseType},</if>
+            <if test="priority != null and priority != ''">#{priority},</if>
+            <if test="preconditions != null">#{preconditions},</if>
+            <if test="testSteps != null">#{testSteps},</if>
+            <if test="expectedResult != null">#{expectedResult},</if>
+            <if test="testDataSource != null">#{testDataSource},</if>
+            <if test="tags != null">#{tags},</if>
+            <if test="status != null and status != ''">#{status},</if>
+            <if test="version != null">#{version},</if>
+            <if test="authorId != null">#{authorId},</if>
+            <if test="reviewerId != null">#{reviewerId},</if>
+            <if test="reviewTime != null">#{reviewTime},</if>
+            <if test="delFlag != null">#{delFlag},</if>
+            <if test="createBy != null">#{createBy},</if>
+            <if test="createTime != null">#{createTime},</if>
+            <if test="updateBy != null">#{updateBy},</if>
+            <if test="updateTime != null">#{updateTime},</if>
+            <if test="remark != null">#{remark},</if>
+         </trim>
+    </insert>
+
+    <update id="updateTestCase" parameterType="TestCase">
+        update test_case
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="projectId != null">project_id = #{projectId},</if>
+            <if test="categoryId != null">category_id = #{categoryId},</if>
+            <if test="caseTitle != null and caseTitle != ''">case_title = #{caseTitle},</if>
+            <if test="caseCode != null and caseCode != ''">case_code = #{caseCode},</if>
+            <if test="caseType != null and caseType != ''">case_type = #{caseType},</if>
+            <if test="priority != null and priority != ''">priority = #{priority},</if>
+            <if test="preconditions != null">preconditions = #{preconditions},</if>
+            <if test="testSteps != null">test_steps = #{testSteps},</if>
+            <if test="expectedResult != null">expected_result = #{expectedResult},</if>
+            <if test="testDataSource != null">test_data_source = #{testDataSource},</if>
+            <if test="tags != null">tags = #{tags},</if>
+            <if test="status != null and status != ''">status = #{status},</if>
+            <if test="version != null">version = #{version},</if>
+            <if test="authorId != null">author_id = #{authorId},</if>
+            <if test="reviewerId != null">reviewer_id = #{reviewerId},</if>
+            <if test="reviewTime != null">review_time = #{reviewTime},</if>
+            <if test="delFlag != null">del_flag = #{delFlag},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+            <if test="remark != null">remark = #{remark},</if>
+        </trim>
+        where case_id = #{caseId}
+    </update>
+
+    <update id="updateCaseStatus">
+        update test_case set status = #{status}, update_time = now()
+        where case_id = #{caseId}
+    </update>
+
+    <delete id="deleteTestCaseByCaseId" parameterType="Long">
+        update test_case set del_flag = '2' where case_id = #{caseId}
+    </delete>
+
+    <delete id="deleteTestCaseByCaseIds" parameterType="String">
+        update test_case set del_flag = '2' where case_id in
+        <foreach item="caseId" collection="array" open="(" separator="," close=")">
+            #{caseId}
+        </foreach>
+    </delete>
+
+</mapper>

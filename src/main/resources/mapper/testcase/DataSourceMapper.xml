@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.autotest.platform.mapper.DataSourceMapper">
+
+    <resultMap type="DataSource" id="DataSourceResult">
+        <result property="dataId"            column="data_id"            />
+        <result property="projectId"         column="project_id"         />
+        <result property="dataName"          column="data_name"          />
+        <result property="dataType"          column="data_type"          />
+        <result property="filePath"           column="file_path"           />
+        <result property="fileName"          column="file_name"          />
+        <result property="dbConfig"          column="db_config"          />
+        <result property="apiConfig"         column="api_config"         />
+        <result property="dataSchema"        column="data_schema"        />
+        <result property="recordCount"       column="record_count"       />
+        <result property="createBy"           column="create_by"           />
+        <result property="createTime"         column="create_time"         />
+        <result property="updateBy"           column="update_by"           />
+        <result property="updateTime"         column="update_time"         />
+    </resultMap>
+
+    <sql id="selectDataSourceVo">
+        select d.data_id, d.project_id, d.data_name, d.data_type, d.file_path, d.file_name,
+               d.db_config, d.api_config, d.data_schema, d.record_count,
+               d.create_by, d.create_time, d.update_by, d.update_time
+        from test_data_source d
+    </sql>
+
+    <select id="selectDataSourceList" parameterType="DataSource" resultMap="DataSourceResult">
+        <include refid="selectDataSourceVo"/>
+        <where>
+            d.project_id = #{projectId}
+            <if test="dataName != null and dataName != ''">
+                AND d.data_name like concat('%', #{dataName}, '%')
+            </if>
+            <if test="dataType != null and dataType != ''">
+                AND d.data_type = #{dataType}
+            </if>
+        </where>
+        order by d.create_time desc
+    </select>
+
+    <select id="selectDataSourceByDataId" parameterType="Long" resultMap="DataSourceResult">
+        <include refid="selectDataSourceVo"/>
+        where d.data_id = #{dataId}
+    </select>
+
+    <select id="selectByProjectId" parameterType="Long" resultMap="DataSourceResult">
+        <include refid="selectDataSourceVo"/>
+        where d.project_id = #{projectId}
+        order by d.create_time desc
+    </select>
+
+    <select id="selectByProjectIdAndType" resultMap="DataSourceResult">
+        <include refid="selectDataSourceVo"/>
+        where d.project_id = #{projectId} and d.data_type = #{dataType}
+        order by d.create_time desc
+    </select>
+
+    <select id="checkDataSourceNameExists" resultType="int">
+        select count(1) from test_data_source
+        where data_name = #{dataName} and project_id = #{projectId}
+    </select>
+
+    <insert id="insertDataSource" parameterType="DataSource" useGeneratedKeys="true" keyProperty="dataId">
+        insert into test_data_source
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="projectId != null">project_id,</if>
+            <if test="dataName != null and dataName != ''">data_name,</if>
+            <if test="dataType != null and dataType != ''">data_type,</if>
+            <if test="filePath != null">file_path,</if>
+            <if test="fileName != null">file_name,</if>
+            <if test="dbConfig != null">db_config,</if>
+            <if test="apiConfig != null">api_config,</if>
+            <if test="dataSchema != null">data_schema,</if>
+            <if test="recordCount != null">record_count,</if>
+            <if test="createBy != null">create_by,</if>
+            <if test="createTime != null">create_time,</if>
+            <if test="updateBy != null">update_by,</if>
+            <if test="updateTime != null">update_time,</if>
+         </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="projectId != null">#{projectId},</if>
+            <if test="dataName != null and dataName != ''">#{dataName},</if>
+            <if test="dataType != null and dataType != ''">#{dataType},</if>
+            <if test="filePath != null">#{filePath},</if>
+            <if test="fileName != null">#{fileName},</if>
+            <if test="dbConfig != null">#{dbConfig},</if>
+            <if test="apiConfig != null">#{apiConfig},</if>
+            <if test="dataSchema != null">#{dataSchema},</if>
+            <if test="recordCount != null">#{recordCount},</if>
+            <if test="createBy != null">#{createBy},</if>
+            <if test="createTime != null">#{createTime},</if>
+            <if test="updateBy != null">#{updateBy},</if>
+            <if test="updateTime != null">#{updateTime},</if>
+         </trim>
+    </insert>
+
+    <update id="updateDataSource" parameterType="DataSource">
+        update test_data_source
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="projectId != null">project_id = #{projectId},</if>
+            <if test="dataName != null and dataName != ''">data_name = #{dataName},</if>
+            <if test="dataType != null and dataType != ''">data_type = #{dataType},</if>
+            <if test="filePath != null">file_path = #{filePath},</if>
+            <if test="fileName != null">file_name = #{fileName},</if>
+            <if test="dbConfig != null">db_config = #{dbConfig},</if>
+            <if test="apiConfig != null">api_config = #{apiConfig},</if>
+            <if test="dataSchema != null">data_schema = #{dataSchema},</if>
+            <if test="recordCount != null">record_count = #{recordCount},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+        </trim>
+        where data_id = #{dataId}
+    </update>
+
+    <delete id="deleteDataSourceByDataId" parameterType="Long">
+        delete from test_data_source where data_id = #{dataId}
+    </delete>
+
+    <delete id="deleteDataSourceByDataIds" parameterType="String">
+        delete from test_data_source where data_id in
+        <foreach item="dataId" collection="array" open="(" separator="," close=")">
+            #{dataId}
+        </foreach>
+    </delete>
+
+</mapper>

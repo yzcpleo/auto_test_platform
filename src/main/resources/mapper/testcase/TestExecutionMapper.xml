@@ -1,0 +1,253 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.autotest.platform.mapper.TestExecutionMapper">
+
+    <resultMap type="TestExecution" id="TestExecutionResult">
+        <result property="executionId"       column="execution_id"       />
+        <result property="executionCode"     column="execution_code"     />
+        <result property="projectId"         column="project_id"         />
+        <result property="executionName"     column="execution_name"     />
+        <result property="executionType"     column="execution_type"     />
+        <result property="status"            column="status"            />
+        <result property="priority"          column="priority"          />
+        <result property="plannedStartTime"  column="planned_start_time"  />
+        <result property="actualStartTime"   column="actual_start_time"   />
+        <result property="plannedEndTime"    column="planned_end_time"    />
+        <result property="actualEndTime"     column="actual_end_time"     />
+        <result property="environmentId"     column="environment_id"     />
+        <result property="executionConfig"   column="execution_config"   />
+        <result property="totalCases"        column="total_cases"        />
+        <result property="successCases"      column="success_cases"      />
+        <result property="failedCases"       column="failed_cases"       />
+        <result property="skippedCases"      column="skipped_cases"      />
+        <result property="progress"          column="progress"          />
+        <result property="errorMessage"      column="error_message"      />
+        <result property="logPath"           column="log_path"           />
+        <result property="reportPath"        column="report_path"        />
+        <result property="executorId"        column="executor_id"        />
+        <result property="createBy"          column="create_by"          />
+        <result property="createTime"        column="create_time"        />
+        <result property="updateBy"          column="update_by"          />
+        <result property="updateTime"        column="update_time"        />
+        <result property="remark"            column="remark"            />
+        <result property="projectName"       column="project_name"       />
+        <result property="executorName"      column="executor_name"      />
+        <result property="environmentName"   column="environment_name"   />
+    </resultMap>
+
+    <sql id="selectTestExecutionVo">
+        select e.execution_id, e.execution_code, e.project_id, e.execution_name, e.execution_type,
+               e.status, e.priority, e.planned_start_time, e.actual_start_time, e.planned_end_time,
+               e.actual_end_time, e.environment_id, e.execution_config, e.total_cases, e.success_cases,
+               e.failed_cases, e.skipped_cases, e.progress, e.error_message, e.log_path, e.report_path,
+               e.executor_id, e.create_by, e.create_time, e.update_by, e.update_time, e.remark,
+               p.project_name, u.nick_name as executor_name, env.environment_name
+        from test_execution e
+        left join test_project p on e.project_id = p.project_id
+        left join sys_user u on e.executor_id = u.user_id
+        left join test_environment env on e.environment_id = env.environment_id
+    </sql>
+
+    <select id="selectTestExecutionList" parameterType="TestExecution" resultMap="TestExecutionResult">
+        <include refid="selectTestExecutionVo"/>
+        <where>
+            <if test="projectId != null">
+                AND e.project_id = #{projectId}
+            </if>
+            <if test="executionName != null and executionName != ''">
+                AND e.execution_name like concat('%', #{executionName}, '%')
+            </if>
+            <if test="executionType != null and executionType != ''">
+                AND e.execution_type = #{executionType}
+            </if>
+            <if test="status != null and status != ''">
+                AND e.status = #{status}
+            </if>
+            <if test="priority != null and priority != ''">
+                AND e.priority = #{priority}
+            </if>
+            <if test="executorId != null">
+                AND e.executor_id = #{executorId}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                AND date_format(e.create_time,'%y%m%d') &gt;= date_format(#{params.beginTime},'%y%m%d')
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                AND date_format(e.create_time,'%y%m%d') &lt;= date_format(#{params.endTime},'%y%m%d')
+            </if>
+        </where>
+        order by e.create_time desc
+    </select>
+
+    <select id="selectTestExecutionByExecutionId" parameterType="Long" resultMap="TestExecutionResult">
+        <include refid="selectTestExecutionVo"/>
+        where e.execution_id = #{executionId}
+    </select>
+
+    <select id="selectByProjectId" parameterType="Long" resultMap="TestExecutionResult">
+        <include refid="selectTestExecutionVo"/>
+        where e.project_id = #{projectId}
+        order by e.create_time desc
+    </select>
+
+    <select id="selectByStatus" resultMap="TestExecutionResult">
+        <include refid="selectTestExecutionVo"/>
+        where e.status = #{status}
+        <if test="limit != null and limit > 0">
+            limit #{limit}
+        </if>
+        order by e.create_time asc
+    </select>
+
+    <select id="statisticsByProject" resultType="map">
+        select
+            count(*) as total_executions,
+            sum(case when e.status = 'SUCCESS' then 1 else 0 end) as success_count,
+            sum(case when e.status = 'FAILED' then 1 else 0 end) as failed_count,
+            sum(case when e.status = 'RUNNING' then 1 else 0 end) as running_count,
+            avg(e.progress) as avg_progress,
+            max(e.create_time) as last_execution_time
+        from test_execution e
+        where e.project_id = #{projectId}
+        <if test="timeRange != null and timeRange != ''">
+            and e.create_time >= #{timeRange}
+        </if>
+    </select>
+
+    <select id="selectExecutionHistory" resultType="map">
+        select
+            date_format(e.create_time, '%Y-%m-%d') as execution_date,
+            count(*) as execution_count,
+            sum(case when e.status = 'SUCCESS' then 1 else 0 end) as success_count,
+            sum(case when e.status = 'FAILED' then 1 else 0 end) as failed_count,
+            avg(e.progress) as avg_progress
+        from test_execution e
+        where e.project_id = #{projectId}
+        and e.create_time >= date_sub(curdate(), interval #{days} day)
+        group by date_format(e.create_time, '%Y-%m-%d')
+        order by execution_date desc
+    </select>
+
+    <insert id="insertTestExecution" parameterType="TestExecution" useGeneratedKeys="true" keyProperty="executionId">
+        insert into test_execution
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="executionCode != null and executionCode != ''">execution_code,</if>
+            <if test="projectId != null">project_id,</if>
+            <if test="executionName != null and executionName != ''">execution_name,</if>
+            <if test="executionType != null and executionType != ''">execution_type,</if>
+            <if test="status != null and status != ''">status,</if>
+            <if test="priority != null and priority != ''">priority,</if>
+            <if test="plannedStartTime != null">planned_start_time,</if>
+            <if test="actualStartTime != null">actual_start_time,</if>
+            <if test="plannedEndTime != null">planned_end_time,</if>
+            <if test="actualEndTime != null">actual_end_time,</if>
+            <if test="environmentId != null">environment_id,</if>
+            <if test="executionConfig != null">execution_config,</if>
+            <if test="totalCases != null">total_cases,</if>
+            <if test="successCases != null">success_cases,</if>
+            <if test="failedCases != null">failed_cases,</if>
+            <if test="skippedCases != null">skipped_cases,</if>
+            <if test="progress != null">progress,</if>
+            <if test="errorMessage != null">error_message,</if>
+            <if test="logPath != null">log_path,</if>
+            <if test="reportPath != null">report_path,</if>
+            <if test="executorId != null">executor_id,</if>
+            <if test="createBy != null">create_by,</if>
+            <if test="createTime != null">create_time,</if>
+            <if test="updateBy != null">update_by,</if>
+            <if test="updateTime != null">update_time,</if>
+            <if test="remark != null">remark,</if>
+         </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="executionCode != null and executionCode != ''">#{executionCode},</if>
+            <if test="projectId != null">#{projectId},</if>
+            <if test="executionName != null and executionName != ''">#{executionName},</if>
+            <if test="executionType != null and executionType != ''">#{executionType},</if>
+            <if test="status != null and status != ''">#{status},</if>
+            <if test="priority != null and priority != ''">#{priority},</if>
+            <if test="plannedStartTime != null">#{plannedStartTime},</if>
+            <if test="actualStartTime != null">#{actualStartTime},</if>
+            <if test="plannedEndTime != null">#{plannedEndTime},</if>
+            <if test="actualEndTime != null">#{actualEndTime},</if>
+            <if test="environmentId != null">#{environmentId},</if>
+            <if test="executionConfig != null">#{executionConfig},</if>
+            <if test="totalCases != null">#{totalCases},</if>
+            <if test="successCases != null">#{successCases},</if>
+            <if test="failedCases != null">#{failedCases},</if>
+            <if test="skippedCases != null">#{skippedCases},</if>
+            <if test="progress != null">#{progress},</if>
+            <if test="errorMessage != null">#{errorMessage},</if>
+            <if test="logPath != null">#{logPath},</if>
+            <if test="reportPath != null">#{reportPath},</if>
+            <if test="executorId != null">#{executorId},</if>
+            <if test="createBy != null">#{createBy},</if>
+            <if test="createTime != null">#{createTime},</if>
+            <if test="updateBy != null">#{updateBy},</if>
+            <if test="updateTime != null">#{updateTime},</if>
+            <if test="remark != null">#{remark},</if>
+         </trim>
+    </insert>
+
+    <update id="updateTestExecution" parameterType="TestExecution">
+        update test_execution
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="executionCode != null and executionCode != ''">execution_code = #{executionCode},</if>
+            <if test="projectId != null">project_id = #{projectId},</if>
+            <if test="executionName != null and executionName != ''">execution_name = #{executionName},</if>
+            <if test="executionType != null and executionType != ''">execution_type = #{executionType},</if>
+            <if test="status != null and status != ''">status = #{status},</if>
+            <if test="priority != null and priority != ''">priority = #{priority},</if>
+            <if test="plannedStartTime != null">planned_start_time = #{plannedStartTime},</if>
+            <if test="actualStartTime != null">actual_start_time = #{actualStartTime},</if>
+            <if test="plannedEndTime != null">planned_end_time = #{plannedEndTime},</if>
+            <if test="actualEndTime != null">actual_end_time = #{actualEndTime},</if>
+            <if test="environmentId != null">environment_id = #{environmentId},</if>
+            <if test="executionConfig != null">execution_config = #{executionConfig},</if>
+            <if test="totalCases != null">total_cases = #{totalCases},</if>
+            <if test="successCases != null">success_cases = #{successCases},</if>
+            <if test="failedCases != null">failed_cases = #{failedCases},</if>
+            <if test="skippedCases != null">skipped_cases = #{skippedCases},</if>
+            <if test="progress != null">progress = #{progress},</if>
+            <if test="errorMessage != null">error_message = #{errorMessage},</if>
+            <if test="logPath != null">log_path = #{logPath},</if>
+            <if test="reportPath != null">report_path = #{reportPath},</if>
+            <if test="executorId != null">executor_id = #{executorId},</if>
+            <if test="createBy != null">create_by = #{createBy},</if>
+            <if test="createTime != null">create_time = #{createTime},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+            <if test="remark != null">remark = #{remark},</if>
+        </trim>
+        where execution_id = #{executionId}
+    </update>
+
+    <update id="updateStatus">
+        update test_execution
+        set status = #{status}, update_time = now()
+        where execution_id = #{executionId}
+    </update>
+
+    <update id="updateProgress">
+        update test_execution
+        set progress = #{progress},
+            success_cases = #{successCases},
+            failed_cases = #{failedCases},
+            skipped_cases = #{skippedCases},
+            update_time = now()
+        where execution_id = #{executionId}
+    </update>
+
+    <delete id="deleteTestExecutionByExecutionId" parameterType="Long">
+        delete from test_execution where execution_id = #{executionId}
+    </delete>
+
+    <delete id="deleteTestExecutionByExecutionIds" parameterType="String">
+        delete from test_execution where execution_id in
+        <foreach item="executionId" collection="array" open="(" separator="," close=")">
+            #{executionId}
+        </foreach>
+    </delete>
+
+</mapper>

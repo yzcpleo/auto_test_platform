@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.autotest.platform.mapper.TestCaseCategoryMapper">
+
+    <resultMap type="TestCaseCategory" id="TestCaseCategoryResult">
+        <result property="categoryId"        column="category_id"        />
+        <result property="projectId"         column="project_id"         />
+        <result property="categoryName"      column="category_name"      />
+        <result property="parentId"           column="parent_id"           />
+        <result property="ancestors"          column="ancestors"           />
+        <result property="orderNum"           column="order_num"           />
+        <result property="leader"             column="leader"              />
+        <result property="createBy"           column="create_by"           />
+        <result property="createTime"         column="create_time"         />
+        <result property="updateBy"           column="update_by"           />
+        <result property="updateTime"         column="update_time"         />
+        <result property="caseCount"          column="case_count"          />
+        <result property="level"              column="level"               />
+    </resultMap>
+
+    <sql id="selectTestCaseCategoryVo">
+        select c.category_id, c.project_id, c.category_name, c.parent_id, c.ancestors,
+               c.order_num, c.leader, c.create_by, c.create_time, c.update_by, c.update_time,
+               (select count(*) from test_case t where t.category_id = c.category_id and t.del_flag = '0') as case_count,
+               (length(c.ancestors) - length(replace(c.ancestors, ',', '')) + 1) as level
+        from test_case_category c
+    </sql>
+
+    <select id="selectTestCaseCategoryList" parameterType="TestCaseCategory" resultMap="TestCaseCategoryResult">
+        <include refid="selectTestCaseCategoryVo"/>
+        <where>
+            c.project_id = #{projectId}
+            <if test="categoryName != null and categoryName != ''">
+                AND c.category_name like concat('%', #{categoryName}, '%')
+            </if>
+            <if test="leader != null and leader != ''">
+                AND c.leader = #{leader}
+            </if>
+            <if test="parentId != null">
+                AND c.parent_id = #{parentId}
+            </if>
+        </where>
+        order by c.order_num
+    </select>
+
+    <select id="selectTestCaseCategoryByCategoryId" parameterType="Long" resultMap="TestCaseCategoryResult">
+        <include refid="selectTestCaseCategoryVo"/>
+        where c.category_id = #{categoryId}
+    </select>
+
+    <select id="selectCategoryTreeByProjectId" parameterType="Long" resultMap="TestCaseCategoryResult">
+        <include refid="selectTestCaseCategoryVo"/>
+        where c.project_id = #{projectId}
+        order by c.order_num
+    </select>
+
+    <select id="selectCategoriesByParentId" parameterType="Long" resultMap="TestCaseCategoryResult">
+        <include refid="selectTestCaseCategoryVo"/>
+        where c.parent_id = #{parentId}
+        order by c.order_num
+    </select>
+
+    <select id="checkCategoryNameExists" resultType="int">
+        select count(1) from test_case_category
+        where category_name = #{categoryName}
+        and parent_id = #{parentId}
+        and project_id = #{projectId}
+    </select>
+
+    <select id="hasChildren" parameterType="Long" resultType="int">
+        select count(1) from test_case_category where parent_id = #{categoryId}
+    </select>
+
+    <select id="hasTestCases" parameterType="Long" resultType="int">
+        select count(1) from test_case where category_id = #{categoryId} and del_flag = '0'
+    </select>
+
+    <insert id="insertTestCaseCategory" parameterType="TestCaseCategory" useGeneratedKeys="true" keyProperty="categoryId">
+        insert into test_case_category
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="projectId != null">project_id,</if>
+            <if test="categoryName != null and categoryName != ''">category_name,</if>
+            <if test="parentId != null">parent_id,</if>
+            <if test="ancestors != null">ancestors,</if>
+            <if test="orderNum != null">order_num,</if>
+            <if test="leader != null">leader,</if>
+            <if test="createBy != null">create_by,</if>
+            <if test="createTime != null">create_time,</if>
+            <if test="updateBy != null">update_by,</if>
+            <if test="updateTime != null">update_time,</if>
+         </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="projectId != null">#{projectId},</if>
+            <if test="categoryName != null and categoryName != ''">#{categoryName},</if>
+            <if test="parentId != null">#{parentId},</if>
+            <if test="ancestors != null">#{ancestors},</if>
+            <if test="orderNum != null">#{orderNum},</if>
+            <if test="leader != null">#{leader},</if>
+            <if test="createBy != null">#{createBy},</if>
+            <if test="createTime != null">#{createTime},</if>
+            <if test="updateBy != null">#{updateBy},</if>
+            <if test="updateTime != null">#{updateTime},</if>
+         </trim>
+    </insert>
+
+    <update id="updateTestCaseCategory" parameterType="TestCaseCategory">
+        update test_case_category
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="projectId != null">project_id = #{projectId},</if>
+            <if test="categoryName != null and categoryName != ''">category_name = #{categoryName},</if>
+            <if test="parentId != null">parent_id = #{parentId},</if>
+            <if test="ancestors != null">ancestors = #{ancestors},</if>
+            <if test="orderNum != null">order_num = #{orderNum},</if>
+            <if test="leader != null">leader = #{leader},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+        </trim>
+        where category_id = #{categoryId}
+    </update>
+
+    <delete id="deleteTestCaseCategoryByCategoryId" parameterType="Long">
+        delete from test_case_category where category_id = #{categoryId}
+    </delete>
+
+    <delete id="deleteTestCaseCategoryByCategoryIds" parameterType="String">
+        delete from test_case_category where category_id in
+        <foreach item="categoryId" collection="array" open="(" separator="," close=")">
+            #{categoryId}
+        </foreach>
+    </delete>
+
+</mapper>

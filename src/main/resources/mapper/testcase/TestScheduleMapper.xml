@@ -1,0 +1,247 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.autotest.platform.mapper.TestScheduleMapper">
+
+    <resultMap type="TestSchedule" id="TestScheduleResult">
+        <result property="scheduleId"         column="schedule_id"         />
+        <result property="scheduleName"       column="schedule_name"       />
+        <result property="projectId"          column="project_id"          />
+        <result property="scheduleType"       column="schedule_type"       />
+        <result property="cronExpression"     column="cron_expression"     />
+        <result property="fixedRate"          column="fixed_rate"          />
+        <result property="fixedDelay"         column="fixed_delay"         />
+        <result property="status"             column="status"              />
+        <result property="description"        column="description"         />
+        <result property="lastExecuteTime"    column="last_execute_time"   />
+        <result property="nextExecuteTime"    column="next_execute_time"   />
+        <result property="executeCount"       column="execute_count"       />
+        <result property="successCount"       column="success_count"       />
+        <result property="failureCount"       column="failure_count"       />
+        <result property="maxExecuteCount"    column="max_execute_count"   />
+        <result property="startTime"          column="start_time"          />
+        <result property="endTime"            column="end_time"            />
+        <result property="executionConfig"    column="execution_config"    />
+        <result property="caseIds"            column="case_ids"            />
+        <result property="categoryIds"        column="category_ids"        />
+        <result property="environmentId"      column="environment_id"      />
+        <result property="executorId"         column="executor_id"         />
+        <result property="createBy"           column="create_by"           />
+        <result property="createTime"         column="create_time"         />
+        <result property="updateBy"           column="update_by"           />
+        <result property="updateTime"         column="update_time"         />
+        <result property="remark"             column="remark"              />
+        <result property="projectName"        column="project_name"        />
+        <result property="executorName"       column="executor_name"       />
+        <result property="environmentName"    column="environment_name"    />
+    </resultMap>
+
+    <sql id="selectTestScheduleVo">
+        select s.schedule_id, s.schedule_name, s.project_id, s.schedule_type, s.cron_expression,
+               s.fixed_rate, s.fixed_delay, s.status, s.description, s.last_execute_time,
+               s.next_execute_time, s.execute_count, s.success_count, s.failure_count,
+               s.max_execute_count, s.start_time, s.end_time, s.execution_config, s.case_ids,
+               s.category_ids, s.environment_id, s.executor_id, s.create_by, s.create_time,
+               s.update_by, s.update_time, s.remark,
+               p.project_name, u.nick_name as executor_name, env.environment_name
+        from test_schedule s
+        left join test_project p on s.project_id = p.project_id
+        left join sys_user u on s.executor_id = u.user_id
+        left join test_environment env on s.environment_id = env.environment_id
+    </sql>
+
+    <select id="selectTestScheduleList" parameterType="TestSchedule" resultMap="TestScheduleResult">
+        <include refid="selectTestScheduleVo"/>
+        <where>
+            <if test="projectId != null">
+                AND s.project_id = #{projectId}
+            </if>
+            <if test="scheduleName != null and scheduleName != ''">
+                AND s.schedule_name like concat('%', #{scheduleName}, '%')
+            </if>
+            <if test="scheduleType != null and scheduleType != ''">
+                AND s.schedule_type = #{scheduleType}
+            </if>
+            <if test="status != null and status != ''">
+                AND s.status = #{status}
+            </if>
+            <if test="executorId != null">
+                AND s.executor_id = #{executorId}
+            </if>
+            <if test="params.beginTime != null and params.beginTime != ''">
+                AND date_format(s.create_time,'%y%m%d') &gt;= date_format(#{params.beginTime},'%y%m%d')
+            </if>
+            <if test="params.endTime != null and params.endTime != ''">
+                AND date_format(s.create_time,'%y%m%d') &lt;= date_format(#{params.endTime},'%y%m%d')
+            </if>
+        </where>
+        order by s.create_time desc
+    </select>
+
+    <select id="selectTestScheduleByScheduleId" parameterType="Long" resultMap="TestScheduleResult">
+        <include refid="selectTestScheduleVo"/>
+        where s.schedule_id = #{scheduleId}
+    </select>
+
+    <select id="selectByProjectId" parameterType="Long" resultMap="TestScheduleResult">
+        <include refid="selectTestScheduleVo"/>
+        where s.project_id = #{projectId}
+        order by s.create_time desc
+    </select>
+
+    <select id="selectEnabledSchedules" resultMap="TestScheduleResult">
+        <include refid="selectTestScheduleVo"/>
+        where s.status = 'ENABLED'
+        order by s.next_execute_time asc
+    </select>
+
+    <select id="selectPendingSchedules" resultMap="TestScheduleResult">
+        <include refid="selectTestScheduleVo"/>
+        where s.status = 'ENABLED'
+        and s.next_execute_time &lt;= #{currentTime}
+        <if test="maxExecuteCount != null">
+        and (s.max_execute_count is null or s.execute_count &lt; s.max_execute_count)
+        </if>
+        order by s.next_execute_time asc
+    </select>
+
+    <select id="checkScheduleNameUnique" resultType="int">
+        select count(1) from test_schedule
+        where project_id = #{projectId} and schedule_name = #{scheduleName}
+        <if test="scheduleId != null">
+        and schedule_id != #{scheduleId}
+        </if>
+    </select>
+
+    <insert id="insertTestSchedule" parameterType="TestSchedule" useGeneratedKeys="true" keyProperty="scheduleId">
+        insert into test_schedule
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="scheduleName != null and scheduleName != ''">schedule_name,</if>
+            <if test="projectId != null">project_id,</if>
+            <if test="scheduleType != null and scheduleType != ''">schedule_type,</if>
+            <if test="cronExpression != null">cron_expression,</if>
+            <if test="fixedRate != null">fixed_rate,</if>
+            <if test="fixedDelay != null">fixed_delay,</if>
+            <if test="status != null and status != ''">status,</if>
+            <if test="description != null">description,</if>
+            <if test="lastExecuteTime != null">last_execute_time,</if>
+            <if test="nextExecuteTime != null">next_execute_time,</if>
+            <if test="executeCount != null">execute_count,</if>
+            <if test="successCount != null">success_count,</if>
+            <if test="failureCount != null">failure_count,</if>
+            <if test="maxExecuteCount != null">max_execute_count,</if>
+            <if test="startTime != null">start_time,</if>
+            <if test="endTime != null">end_time,</if>
+            <if test="executionConfig != null">execution_config,</if>
+            <if test="caseIds != null">case_ids,</if>
+            <if test="categoryIds != null">category_ids,</if>
+            <if test="environmentId != null">environment_id,</if>
+            <if test="executorId != null">executor_id,</if>
+            <if test="createBy != null">create_by,</if>
+            <if test="createTime != null">create_time,</if>
+            <if test="updateBy != null">update_by,</if>
+            <if test="updateTime != null">update_time,</if>
+            <if test="remark != null">remark,</if>
+         </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="scheduleName != null and scheduleName != ''">#{scheduleName},</if>
+            <if test="projectId != null">#{projectId},</if>
+            <if test="scheduleType != null and scheduleType != ''">#{scheduleType},</if>
+            <if test="cronExpression != null">#{cronExpression},</if>
+            <if test="fixedRate != null">#{fixedRate},</if>
+            <if test="fixedDelay != null">#{fixedDelay},</if>
+            <if test="status != null and status != ''">#{status},</if>
+            <if test="description != null">#{description},</if>
+            <if test="lastExecuteTime != null">#{lastExecuteTime},</if>
+            <if test="nextExecuteTime != null">#{nextExecuteTime},</if>
+            <if test="executeCount != null">#{executeCount},</if>
+            <if test="successCount != null">#{successCount},</if>
+            <if test="failureCount != null">#{failureCount},</if>
+            <if test="maxExecuteCount != null">#{maxExecuteCount},</if>
+            <if test="startTime != null">#{startTime},</if>
+            <if test="endTime != null">#{endTime},</if>
+            <if test="executionConfig != null">#{executionConfig},</if>
+            <if test="caseIds != null">#{caseIds},</if>
+            <if test="categoryIds != null">#{categoryIds},</if>
+            <if test="environmentId != null">#{environmentId},</if>
+            <if test="executorId != null">#{executorId},</if>
+            <if test="createBy != null">#{createBy},</if>
+            <if test="createTime != null">#{createTime},</if>
+            <if test="updateBy != null">#{updateBy},</if>
+            <if test="updateTime != null">#{updateTime},</if>
+            <if test="remark != null">#{remark},</if>
+         </trim>
+    </insert>
+
+    <update id="updateTestSchedule" parameterType="TestSchedule">
+        update test_schedule
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="scheduleName != null and scheduleName != ''">schedule_name = #{scheduleName},</if>
+            <if test="projectId != null">project_id = #{projectId},</if>
+            <if test="scheduleType != null and scheduleType != ''">schedule_type = #{scheduleType},</if>
+            <if test="cronExpression != null">cron_expression = #{cronExpression},</if>
+            <if test="fixedRate != null">fixed_rate = #{fixedRate},</if>
+            <if test="fixedDelay != null">fixed_delay = #{fixedDelay},</if>
+            <if test="status != null and status != ''">status = #{status},</if>
+            <if test="description != null">description = #{description},</if>
+            <if test="lastExecuteTime != null">last_execute_time = #{lastExecuteTime},</if>
+            <if test="nextExecuteTime != null">next_execute_time = #{nextExecuteTime},</if>
+            <if test="executeCount != null">execute_count = #{executeCount},</if>
+            <if test="successCount != null">success_count = #{successCount},</if>
+            <if test="failureCount != null">failure_count = #{failureCount},</if>
+            <if test="maxExecuteCount != null">max_execute_count = #{maxExecuteCount},</if>
+            <if test="startTime != null">start_time = #{startTime},</if>
+            <if test="endTime != null">end_time = #{endTime},</if>
+            <if test="executionConfig != null">execution_config = #{executionConfig},</if>
+            <if test="caseIds != null">case_ids = #{caseIds},</if>
+            <if test="categoryIds != null">category_ids = #{categoryIds},</if>
+            <if test="environmentId != null">environment_id = #{environmentId},</if>
+            <if test="executorId != null">executor_id = #{executorId},</if>
+            <if test="createBy != null">create_by = #{createBy},</if>
+            <if test="createTime != null">create_time = #{createTime},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+            <if test="remark != null">remark = #{remark},</if>
+        </trim>
+        where schedule_id = #{scheduleId}
+    </update>
+
+    <update id="updateStatus">
+        update test_schedule
+        set status = #{status}, update_time = now()
+        where schedule_id = #{scheduleId}
+    </update>
+
+    <update id="updateExecutionStats">
+        update test_schedule
+        set execute_count = #{executeCount},
+            success_count = #{successCount},
+            failure_count = #{failureCount},
+            last_execute_time = #{lastExecuteTime},
+            next_execute_time = #{nextExecuteTime},
+            update_time = now()
+        where schedule_id = #{scheduleId}
+    </update>
+
+    <update id="batchUpdateStatus">
+        update test_schedule
+        set status = #{status}, update_time = now()
+        where schedule_id in
+        <foreach collection="scheduleIds" item="scheduleId" open="(" separator="," close=")">
+            #{scheduleId}
+        </foreach>
+    </update>
+
+    <delete id="deleteTestScheduleByScheduleId" parameterType="Long">
+        delete from test_schedule where schedule_id = #{scheduleId}
+    </delete>
+
+    <delete id="deleteTestScheduleByScheduleIds" parameterType="String">
+        delete from test_schedule where schedule_id in
+        <foreach item="scheduleId" collection="array" open="(" separator="," close=")">
+            #{scheduleId}
+        </foreach>
+    </delete>
+
+</mapper>
